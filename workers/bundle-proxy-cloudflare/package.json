@@ -1,0 +1,14 @@
+{
+  "name": "@seer/bundle-proxy-cloudflare",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy:cloudflare": "wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250317.0",
+    "typescript": "^5.8.3",
+    "wrangler": "^4.0.0"
+  }
+}

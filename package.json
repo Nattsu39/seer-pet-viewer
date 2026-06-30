@@ -5,11 +5,13 @@
   "scripts": {
     "dev": "pnpm --filter @seer/viewer dev",
     "preview": "pnpm --filter @seer/viewer preview",
-    "build": "pnpm -r build",
+    "build:index": "node tools/build-pet-index.mjs",
+    "build": "pnpm build:index && pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "export": "uv run --with UnityPy tools/export_swfclip.py",
-    "export:spine": "uv run --with UnityPy tools/export_spineclip.py"
+    "export:spine": "uv run --with UnityPy tools/export_spineclip.py",
+    "deploy:proxy-cloudflare": "pnpm --filter @seer/bundle-proxy-cloudflare deploy:cloudflare"
   },
   "engines": {
     "node": ">=20"

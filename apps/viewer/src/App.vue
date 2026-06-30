@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { defineAsyncComponent, onMounted, onUnmounted, ref } from "vue";
+import PetPicker from "./components/PetPicker.vue";
 import { usePetLoader } from "./composables/usePetLoader";
 import { useViewerSettings } from "./composables/useViewerSettings";
+import type { PetAnimIndex, PetAnimIndexEntry } from "./lib/pet-anim-index";
 
 const PetViewer = defineAsyncComponent(
   () => import("./components/PetViewer.vue"),
@@ -16,6 +18,7 @@ const {
   materialCount,
   sharedMaterialBundleName,
   loadBundleFile,
+  loadBundleFromRemote,
   loadSwfClipDir,
   loadSpineClipDir,
   loadMaterialBundle,
@@ -95,6 +98,10 @@ function onMaterialInput(e: Event) {
   const file = input.files?.[0];
   if (file) void loadMaterialBundle(file);
   input.value = "";
+}
+
+function onRemoteSelect(entry: PetAnimIndexEntry, index: PetAnimIndex) {
+  void loadBundleFromRemote(entry, index.sharedBundles);
 }
 </script>
 
@@ -201,6 +208,7 @@ function onMaterialInput(e: Event) {
     >
       <p v-if="loading">正在解析…</p>
       <template v-else>
+        <PetPicker :loading="loading" @select="onRemoteSelect" />
         <p class="drop-title">拖放 <code>ppets_*</code> 或 <code>pskilltimeline_spines_*</code> bundle 到此处</p>
         <p class="drop-hint">
           或点击上方按钮选择文件；支持预转换 <code>.swfclip</code> / <code>.spineclip</code> 目录
@@ -387,6 +395,7 @@ function onMaterialInput(e: Event) {
   align-items: center;
   justify-content: center;
   margin: 24px;
+  padding: 16px;
   border: 2px dashed var(--border);
   border-radius: 12px;
   color: var(--muted);

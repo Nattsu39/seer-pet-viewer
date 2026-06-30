@@ -24,7 +24,17 @@ jobs:
 
       - run: pnpm install
 
-      - run: pnpm build
+      - name: Generate pet-anim-index.json
+        run: pnpm build:index
+
+      - name: Build viewer
+        env:
+          # 在仓库 Settings → Secrets and variables → Actions → Variables 中配置
+          # 名称: VITE_BUNDLE_PROXY_PREFIX
+          # 值: https://your-bundle-proxy-cloudflare.workers.dev
+          # 未配置时远程资源选择器在生产构建中自动禁用
+          VITE_BUNDLE_PROXY_PREFIX: ${{ vars.VITE_BUNDLE_PROXY_PREFIX }}
+        run: pnpm -r build
 
       - uses: actions/upload-pages-artifact@v3
         with:

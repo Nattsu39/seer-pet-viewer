@@ -51,6 +51,17 @@ export default defineConfig(({ command }) => ({
   },
   // dev/preview 用绝对路径；构建产物用相对路径，避免 file:// 或子路径部署时资源 404
   base: command === "build" ? "./" : "/",
+  server: {
+    proxy: {
+      "/proxy": {
+        target:
+          "https://newseer.61.com/Assets/StandaloneWindows64/PetAnimPackage",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/proxy/, ""),
+        headers: { referer: "https://newseer.61.com" },
+      },
+    },
+  },
   build: {
     target: "esnext",
   },

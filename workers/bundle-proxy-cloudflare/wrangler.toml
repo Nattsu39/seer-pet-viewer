@@ -1,0 +1,7 @@
+name = "seer-bundle-proxy-cloudflare"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# 可选：限制允许的前端来源
+[vars]
+ALLOWED_ORIGIN = "https://nattsu39.github.io"
