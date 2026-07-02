@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref, watch, onBeforeUnmount, computed } from "vue";
+import { ref, watch, onBeforeUnmount, computed, nextTick } from "vue";
+import ExportModal from "./ExportModal.vue";
+import { useHistoryOverlay } from "../composables/useHistoryOverlay";
 import { SwfPlayer } from "@seer/swf-renderer";
 import { SpinePlayer } from "@seer/spine-renderer";
 import type { SwfClipData } from "@seer/swf-bundle";
@@ -48,8 +50,10 @@ const loop = ref(true);
 const speed = ref(1);
 const currentFrame = ref(0);
 const frameCount = ref(0);
-const exportExpanded = ref(false);
 const controlsCollapsed = ref(false);
+const showExportModal = ref(false);
+const { openOverlay: openExportModal, closeOverlay: closeExportModal } =
+  useHistoryOverlay(showExportModal, "export-modal");
 
 const sequenceOptions = computed(() => {
   if (props.pet.type === "swf") {
@@ -238,11 +242,55 @@ function fitView() {
   activePlayer()?.fitToView();
 }
 
+let fitViewFrame = 0;
+let hostResizeObserver: ResizeObserver | null = null;
+
+function scheduleFitView() {
+  cancelAnimationFrame(fitViewFrame);
+  fitViewFrame = requestAnimationFrame(() => {
+    fitViewFrame = requestAnimationFrame(() => {
+      activePlayer()?.fitToView();
+    });
+  });
+}
+
+watch(
+  () => controlsCollapsed.value,
+  () => {
+    if (!props.isMobile) return;
+    void nextTick(() => scheduleFitView());
+  },
+);
+
+watch(
+  canvasHost,
+  (host) => {
+    hostResizeObserver?.disconnect();
+    hostResizeObserver = null;
+    if (!host) return;
+
+    let lastW = 0;
+    let lastH = 0;
+    hostResizeObserver = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (!rect) return;
+      if (
+        Math.abs(rect.width - lastW) < 0.5 &&
+        Math.abs(rect.height - lastH) < 0.5
+      ) {
+        return;
+      }
+      lastW = rect.width;
+      lastH = rect.height;
+      scheduleFitView();
+    });
+    hostResizeObserver.observe(host);
+  },
+  { flush: "post" },
+);
+
 function toggleControlsCollapsed() {
   controlsCollapsed.value = !controlsCollapsed.value;
-  if (controlsCollapsed.value) {
-    requestAnimationFrame(() => activePlayer()?.fitToView());
-  }
 }
 
 function captureSource(): FrameCaptureSource | null {
@@ -259,6 +307,13 @@ async function handleExport() {
     currentSequence.value,
     getCanvasBackgroundColor(),
   );
+  if (!exportError.value && props.isMobile) {
+    closeExportModal();
+  }
+}
+
+function openMobileExport() {
+  openExportModal();
 }
 
 const exportProgressLabel = computed(() => {
@@ -269,6 +324,8 @@ const exportProgressLabel = computed(() => {
 });
 
 onBeforeUnmount(() => {
+  hostResizeObserver?.disconnect();
+  cancelAnimationFrame(fitViewFrame);
   swfPlayer.value?.destroy();
   spinePlayer.value?.destroy();
 });
@@ -285,21 +342,38 @@ defineExpose({ fitView });
       :class="{ collapsed: isMobile && controlsCollapsed }"
     >
       <div v-if="isMobile && controlsCollapsed" class="controls-collapsed-bar">
-        <div class="controls-main-top">
-          <div class="controls-collapsed-info">
-            <span class="controls-collapsed-label">{{ currentSequenceLabel }}</span>
-            <span class="controls-collapsed-frame">
-              {{ currentFrame + 1 }}/{{ frameCount }}
-            </span>
-            <button
-              type="button"
-              class="controls-collapsed-play primary"
-              :disabled="exporting"
-              @click="togglePlay"
-            >
-              {{ playing ? "暂停" : "播放" }}
-            </button>
-          </div>
+        <div class="controls-collapsed-info">
+          <span class="controls-collapsed-label">{{ currentSequenceLabel }}</span>
+          <span class="controls-collapsed-frame">
+            {{ currentFrame + 1 }}/{{ frameCount }}
+          </span>
+          <button
+            type="button"
+            class="controls-collapsed-play primary"
+            :disabled="exporting"
+            @click="togglePlay"
+          >
+            {{ playing ? "暂停" : "播放" }}
+          </button>
+        </div>
+        <div class="controls-collapsed-side">
+          <button
+            type="button"
+            class="collapsed-action-btn"
+            title="适应窗口"
+            @click="fitView"
+          >
+            适应窗口
+          </button>
+          <button
+            type="button"
+            class="collapsed-action-btn"
+            title="导出动画"
+            :disabled="exporting"
+            @click="openMobileExport"
+          >
+            导出动画
+          </button>
           <button
             type="button"
             class="controls-collapse-btn compact"
@@ -371,49 +445,17 @@ defineExpose({ fitView });
 
         <button class="fit-btn" @click="fitView">适应窗口</button>
 
-        <div v-if="isMobile" class="export-accordion">
-          <button
-            type="button"
-            class="export-toggle"
-            :aria-expanded="exportExpanded"
-            @click="exportExpanded = !exportExpanded"
-          >
-            导出 {{ exportExpanded ? "▲" : "▼" }}
-          </button>
-          <div v-if="exportExpanded" class="export-group">
-            <label class="export-field">
-              <span>格式</span>
-              <select v-model="exportFormat" :disabled="exporting">
-                <option value="webp">WebP</option>
-                <option value="gif">GIF</option>
-              </select>
-            </label>
-            <label class="export-field">
-              <span>缩放</span>
-              <select v-model.number="exportScale" :disabled="exporting">
-                <option :value="1">1×</option>
-                <option :value="2">2×</option>
-                <option :value="3">3×</option>
-              </select>
-            </label>
-            <label class="export-field">
-              <span>背景</span>
-              <select v-model="exportBackground" :disabled="exporting">
-                <option value="transparent">透明</option>
-                <option value="theme">当前主题</option>
-              </select>
-            </label>
-            <button
-              class="export-btn primary"
-              :disabled="exporting"
-              @click="handleExport"
-            >
-              {{ exporting ? exportProgressLabel || "导出中…" : "导出动画" }}
-            </button>
-          </div>
-        </div>
+        <button
+          v-if="isMobile"
+          type="button"
+          class="export-open-btn"
+          :disabled="exporting"
+          @click="openMobileExport"
+        >
+          导出动画
+        </button>
 
-        <div v-else class="export-group">
+        <div v-if="!isMobile" class="export-group">
           <label class="export-field">
             <span>格式</span>
             <select v-model="exportFormat" :disabled="exporting">
@@ -444,10 +486,26 @@ defineExpose({ fitView });
             {{ exporting ? exportProgressLabel || "导出中…" : "导出动画" }}
           </button>
         </div>
-        <p v-if="exportError" class="export-error">{{ exportError }}</p>
+        <p v-if="exportError && !isMobile" class="export-error">{{ exportError }}</p>
       </div>
       </div>
     </aside>
+
+    <ExportModal
+      v-if="isMobile"
+      :open="showExportModal"
+      :exporting="exporting"
+      :export-error="exportError"
+      :export-progress-label="exportProgressLabel"
+      :export-format="exportFormat"
+      :export-scale="exportScale"
+      :export-background="exportBackground"
+      @close="closeExportModal()"
+      @export="handleExport"
+      @update:export-format="exportFormat = $event"
+      @update:export-scale="exportScale = $event"
+      @update:export-background="exportBackground = $event"
+    />
   </div>
 </template>
 
@@ -479,6 +537,7 @@ defineExpose({ fitView });
   display: block;
   width: 100% !important;
   height: 100% !important;
+  object-fit: contain;
 }
 
 .controls {
@@ -667,7 +726,8 @@ defineExpose({ fitView });
 }
 
 .viewer.mobile .controls {
-  max-height: min(50vh, calc(100dvh - 120px));
+  flex-shrink: 0;
+  max-height: min(46dvh, calc(100svh - 140px));
   padding-bottom: max(12px, env(safe-area-inset-bottom));
 }
 
@@ -679,7 +739,27 @@ defineExpose({ fitView });
 }
 
 .controls-collapsed-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
+  min-width: 0;
+}
+
+.controls-collapsed-side {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.collapsed-action-btn {
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 4px 8px;
+  font-size: 0.78rem;
+  white-space: nowrap;
 }
 
 .controls-collapsed-info {
@@ -818,26 +898,19 @@ defineExpose({ fitView });
   min-height: 44px;
 }
 
-.export-accordion {
-  width: 100%;
-}
-
-.export-toggle {
+.export-open-btn {
   width: 100%;
   min-height: 44px;
-  text-align: left;
 }
 
-.viewer.mobile .export-group {
-  width: 100%;
-  flex-direction: column;
-  align-items: stretch;
-  margin-top: 8px;
-}
+@media (max-width: 400px) {
+  .collapsed-action-btn {
+    padding: 4px 6px;
+    font-size: 0.72rem;
+  }
 
-.viewer.mobile .export-field select,
-.viewer.mobile .export-btn {
-  width: 100%;
-  min-height: 44px;
+  .controls-collapsed-frame {
+    display: none;
+  }
 }
 </style>

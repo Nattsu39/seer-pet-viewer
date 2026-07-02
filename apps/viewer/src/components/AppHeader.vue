@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
+import { onMounted, onUnmounted, ref, watch } from "vue";
 import { useViewerSettings } from "../composables/useViewerSettings";
+import { lockBodyScroll, unlockBodyScroll } from "../lib/bodyScrollLock";
 
 defineProps<{
   petLoaded: boolean;
@@ -27,7 +28,6 @@ const {
 const showInfoMenu = ref(false);
 const showMobileMenu = ref(false);
 const infoMenuRef = ref<HTMLElement | null>(null);
-const mobileMenuRef = ref<HTMLElement | null>(null);
 
 function toggleInfoMenu(e: MouseEvent) {
   e.stopPropagation();
@@ -46,17 +46,22 @@ function onDocClick(e: MouseEvent) {
   if (showInfoMenu.value && infoMenuRef.value && !infoMenuRef.value.contains(target)) {
     showInfoMenu.value = false;
   }
-  if (showMobileMenu.value && mobileMenuRef.value && !mobileMenuRef.value.contains(target)) {
-    showMobileMenu.value = false;
-  }
 }
-
-onMounted(() => document.addEventListener("click", onDocClick));
-onUnmounted(() => document.removeEventListener("click", onDocClick));
 
 function closeMobileMenu() {
   showMobileMenu.value = false;
 }
+
+watch(showMobileMenu, (open) => {
+  if (open) lockBodyScroll();
+  else unlockBodyScroll();
+});
+
+onMounted(() => document.addEventListener("click", onDocClick));
+onUnmounted(() => {
+  document.removeEventListener("click", onDocClick);
+  if (showMobileMenu.value) unlockBodyScroll();
+});
 </script>
 
 <template>
@@ -103,7 +108,7 @@ function closeMobileMenu() {
     <div class="header-actions">
       <button
         type="button"
-        class="btn-setting"
+        class="header-btn btn-setting"
         :title="`切换主题（当前：${themeLabel}，下次：${nextThemeLabel}）`"
         @click="emit('cycleTheme')"
       >
@@ -113,7 +118,7 @@ function closeMobileMenu() {
       <button
         v-if="!isMobile"
         type="button"
-        class="btn-setting"
+        class="header-btn btn-setting"
         :title="`切换工具栏位置（当前：${toolbarLabel}，下次：${nextToolbarLabel}）`"
         @click="emit('toggleToolbarPosition')"
       >
@@ -157,86 +162,111 @@ function closeMobileMenu() {
             @change="emit('materialInput', $event)"
           />
         </label>
-        <button v-if="petLoaded" @click="emit('reset')">关闭</button>
+        <button v-if="petLoaded" class="header-btn" @click="emit('reset')">
+          关闭
+        </button>
       </template>
 
       <template v-else>
         <button
           v-if="petLoaded"
           type="button"
-          class="btn-setting"
+          class="header-btn btn-setting"
           @click="emit('reset')"
         >
           关闭
         </button>
-        <div ref="mobileMenuRef" class="mobile-menu">
-          <button
-            type="button"
-            class="btn-setting mobile-menu-btn"
-            aria-label="打开菜单"
-            :aria-expanded="showMobileMenu"
-            @click="toggleMobileMenu"
-          >
-            菜单
-          </button>
-          <div v-if="showMobileMenu" class="mobile-menu-panel" role="menu">
-            <label class="mobile-menu-item primary">
-              导入 Bundle
-              <input
-                type="file"
-                hidden
-                @change="
-                  emit('fileInput', $event);
-                  closeMobileMenu();
-                "
-              />
-            </label>
-            <label class="mobile-menu-item">
-              导入 .swfclip
-              <input
-                type="file"
-                hidden
-                multiple
-                webkitdirectory
-                @change="
-                  emit('fileInput', $event);
-                  closeMobileMenu();
-                "
-              />
-            </label>
-            <label class="mobile-menu-item">
-              导入 .spineclip
-              <input
-                type="file"
-                hidden
-                multiple
-                webkitdirectory
-                @change="
-                  emit('spineClipInput', $event);
-                  closeMobileMenu();
-                "
-              />
-            </label>
-            <label
-              class="mobile-menu-item"
-              :title="`导入 FlashTools 共享 SWF 材质：${sharedMaterialBundleName}`"
-            >
-              导入共享材质
-              <input
-                type="file"
-                hidden
-                accept=".bundle"
-                @change="
-                  emit('materialInput', $event);
-                  closeMobileMenu();
-                "
-              />
-            </label>
-          </div>
-        </div>
+        <button
+          type="button"
+          class="header-btn btn-setting"
+          aria-label="打开菜单"
+          :aria-expanded="showMobileMenu"
+          @click="toggleMobileMenu"
+        >
+          菜单
+        </button>
       </template>
     </div>
   </header>
+
+  <Teleport to="body">
+    <div
+      v-if="isMobile && showMobileMenu"
+      class="mobile-menu-backdrop"
+      @click="closeMobileMenu"
+    >
+      <div
+        class="mobile-menu-sheet"
+        role="menu"
+        aria-label="导入菜单"
+        @click.stop
+      >
+        <div class="mobile-menu-sheet-header">
+          <span>导入资源</span>
+          <button
+            type="button"
+            class="mobile-menu-close"
+            aria-label="关闭菜单"
+            @click="closeMobileMenu"
+          >
+            ×
+          </button>
+        </div>
+        <label class="mobile-menu-item primary">
+          导入 Bundle
+          <input
+            type="file"
+            hidden
+            @change="
+              emit('fileInput', $event);
+              closeMobileMenu();
+            "
+          />
+        </label>
+        <label class="mobile-menu-item">
+          导入 .swfclip
+          <input
+            type="file"
+            hidden
+            multiple
+            webkitdirectory
+            @change="
+              emit('fileInput', $event);
+              closeMobileMenu();
+            "
+          />
+        </label>
+        <label class="mobile-menu-item">
+          导入 .spineclip
+          <input
+            type="file"
+            hidden
+            multiple
+            webkitdirectory
+            @change="
+              emit('spineClipInput', $event);
+              closeMobileMenu();
+            "
+          />
+        </label>
+        <label
+          class="mobile-menu-item"
+          :title="`导入 FlashTools 共享 SWF 材质：${sharedMaterialBundleName}`"
+        >
+          导入共享材质
+          <input
+            type="file"
+            hidden
+            accept=".bundle"
+            @change="
+              emit('materialInput', $event);
+              closeMobileMenu();
+            "
+          />
+        </label>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -259,6 +289,7 @@ function closeMobileMenu() {
   display: flex;
   align-items: center;
   min-width: 0;
+  flex: 1;
 }
 
 .header-title-row {
@@ -343,12 +374,18 @@ function closeMobileMenu() {
   gap: 8px;
   flex-wrap: wrap;
   align-items: center;
+  flex-shrink: 0;
+}
+
+.header-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-setting {
   font-size: 0.85rem;
   white-space: nowrap;
-  min-height: 36px;
 }
 
 .btn {
@@ -368,42 +405,62 @@ function closeMobileMenu() {
   color: #fff;
 }
 
-.mobile-menu {
-  position: relative;
+.mobile-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
 }
 
-.mobile-menu-btn {
-  min-height: 44px;
-  min-width: 44px;
-}
-
-.mobile-menu-panel {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 100;
+.mobile-menu-sheet {
+  width: 100%;
+  max-height: min(70dvh, 420px);
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-width: 200px;
-  padding: 6px;
+  gap: 8px;
+  padding: 12px 16px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  border-radius: 16px 16px 0 0;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-bottom: none;
   background: var(--panel);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  overflow-y: auto;
+}
+
+.mobile-menu-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.mobile-menu-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  font-size: 1.4rem;
+  line-height: 1;
+  border-radius: 8px;
 }
 
 .mobile-menu-item {
   display: flex;
   align-items: center;
-  padding: 10px 12px;
-  border-radius: 6px;
+  padding: 12px 14px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--panel);
   color: var(--text);
   font-size: 0.9rem;
   cursor: pointer;
-  min-height: 44px;
 }
 
 .mobile-menu-item.primary {
@@ -418,6 +475,7 @@ function closeMobileMenu() {
     padding-top: max(10px, env(safe-area-inset-top));
     padding-left: max(12px, env(safe-area-inset-left));
     padding-right: max(12px, env(safe-area-inset-right));
+    flex-wrap: nowrap;
   }
 
   .header h1 {
@@ -427,6 +485,11 @@ function closeMobileMenu() {
 
   .header-actions {
     flex-wrap: nowrap;
+  }
+
+  .header-btn.btn-setting {
+    min-height: 40px;
+    padding: 8px 12px;
   }
 }
 </style>

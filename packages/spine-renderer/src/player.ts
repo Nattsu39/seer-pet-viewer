@@ -456,7 +456,7 @@ export class SpinePlayer {
     this.canvas.width = w;
     this.canvas.height = h;
     this.renderer.resize(ResizeMode.Expand);
-    this.updateCamera(false);
+    this.fitToView();
   }
 
   private emitFrame(): void {
