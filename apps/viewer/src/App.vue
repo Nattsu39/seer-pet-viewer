@@ -21,6 +21,7 @@ const {
   loading,
   error,
   loadingMessage,
+  downloadProgress,
   remoteLoadContext,
   pet,
   parseMs,
@@ -156,6 +157,7 @@ function onRemoteSelect(entry: PetAnimIndexEntry, index: PetAnimIndex) {
         <RemoteLoadNotice
           :loading="loading"
           :loading-message="loadingMessage"
+          :download-progress="downloadProgress"
           :error="error"
           :entry="remoteLoadContext?.entry ?? null"
           :can-retry="!!remoteLoadContext"

@@ -91,20 +91,53 @@ export function resolveBundleFetchUrl(item: RemoteBundleRef): string {
   return bundleProxyUrl(item.path);
 }
 
-export async function fetchBundleBuffer(hash: string): Promise<ArrayBuffer> {
-  return fetchBundleFromUrl(bundleProxyUrl(hash));
+export interface DownloadProgress {
+  loaded: number;
+  total: number | null;
+}
+
+export type DownloadProgressCallback = (progress: DownloadProgress) => void;
+
+export interface FetchBundleOptions {
+  onProgress?: DownloadProgressCallback;
+  /** Content-Length 缺失时的预期体积（如索引 fileSize） */
+  expectedSize?: number;
+}
+
+export function downloadProgressPercent(
+  progress: DownloadProgress,
+): number | null {
+  const total = progress.total;
+  if (!total || total <= 0) return null;
+  return Math.min(100, Math.round((progress.loaded / total) * 100));
+}
+
+export async function fetchBundleBuffer(
+  hash: string,
+  options?: FetchBundleOptions,
+): Promise<ArrayBuffer> {
+  return fetchBundleFromUrl(bundleProxyUrl(hash), options);
 }
 
 export async function fetchBundleFromIndex(
   item: RemoteBundleRef,
+  options?: FetchBundleOptions,
 ): Promise<ArrayBuffer> {
   if (!isRemoteBundleAllowed(item)) {
     throw new Error(remoteBundleBlockedMessage(item.fileSize));
   }
-  return fetchBundleFromUrl(resolveBundleFetchUrl(item));
+  return fetchBundleFromUrl(resolveBundleFetchUrl(item), {
+    ...options,
+    expectedSize:
+      options?.expectedSize ??
+      (item.fileSize > 0 ? item.fileSize : undefined),
+  });
 }
 
-async function fetchBundleFromUrl(url: string): Promise<ArrayBuffer> {
+async function fetchBundleFromUrl(
+  url: string,
+  options?: FetchBundleOptions,
+): Promise<ArrayBuffer> {
   let res: Response;
   try {
     res = await fetch(url, { cache: "force-cache" });
@@ -117,8 +150,58 @@ async function fetchBundleFromUrl(url: string): Promise<ArrayBuffer> {
   }
 
   try {
-    return await res.arrayBuffer();
-  } catch {
+    return await readResponseWithProgress(res, options);
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith("资源数据")) {
+      throw e;
+    }
     throw new Error("资源数据读取失败，请重试");
   }
+}
+
+async function readResponseWithProgress(
+  res: Response,
+  options?: FetchBundleOptions,
+): Promise<ArrayBuffer> {
+  const headerLength = res.headers.get("Content-Length");
+  const parsedLength = headerLength
+    ? Number.parseInt(headerLength, 10)
+    : Number.NaN;
+  const total =
+    Number.isFinite(parsedLength) && parsedLength > 0
+      ? parsedLength
+      : options?.expectedSize && options.expectedSize > 0
+        ? options.expectedSize
+        : null;
+
+  const report = (loaded: number) => {
+    options?.onProgress?.({ loaded, total });
+  };
+
+  if (!res.body) {
+    const buffer = await res.arrayBuffer();
+    report(buffer.byteLength);
+    return buffer;
+  }
+
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let loaded = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    loaded += value.byteLength;
+    report(loaded);
+  }
+
+  const out = new Uint8Array(loaded);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  report(loaded);
+  return out.buffer;
 }

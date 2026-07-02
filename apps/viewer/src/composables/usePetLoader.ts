@@ -18,7 +18,7 @@ import type {
   PetAnimIndexEntry,
   PetAnimSharedBundle,
 } from "../lib/pet-anim-index";
-import { fetchBundleFromIndex, isRemoteBundleAllowed, remoteBundleBlockedMessage } from "../lib/remote-bundle";
+import { fetchBundleFromIndex, isRemoteBundleAllowed, remoteBundleBlockedMessage, type DownloadProgress } from "../lib/remote-bundle";
 
 export interface RemoteLoadContext {
   entry: PetAnimIndexEntry;
@@ -46,6 +46,7 @@ export function usePetLoader() {
   const loading = ref(false);
   const error = ref<string | null>(null);
   const loadingMessage = ref<string | null>(null);
+  const downloadProgress = ref<DownloadProgress | null>(null);
   const remoteLoadContext = ref<RemoteLoadContext | null>(null);
   const pet = ref<PetClip | null>(null);
   const parseMs = ref(0);
@@ -56,6 +57,14 @@ export function usePetLoader() {
   let lastSwfBuffer: ArrayBuffer | null = null;
   let lastSwfFileName = "";
   let sharedMaterialRemoteLoaded = false;
+
+  function reportDownloadProgress(progress: DownloadProgress) {
+    downloadProgress.value = progress;
+  }
+
+  function clearDownloadProgress() {
+    downloadProgress.value = null;
+  }
 
   function materialSnapshot() {
     const snapshot = materialResolver.snapshot();
@@ -118,6 +127,7 @@ export function usePetLoader() {
     } finally {
       loading.value = false;
       loadingMessage.value = null;
+      clearDownloadProgress();
     }
   }
 
@@ -165,7 +175,9 @@ export function usePetLoader() {
       throw new Error(`索引中缺少共享材质包 ${SHARED_SWF_MATERIAL_BUNDLE_NAME}`);
     }
 
-    const buffer = await fetchBundleFromIndex(shared);
+    const buffer = await fetchBundleFromIndex(shared, {
+      onProgress: reportDownloadProgress,
+    });
     await applyMaterialBundleBuffer(buffer);
     sharedMaterialRemoteLoaded = true;
   }
@@ -184,14 +196,19 @@ export function usePetLoader() {
     error.value = null;
     warnings.value = [];
     remoteLoadContext.value = { entry, sharedBundles };
+    clearDownloadProgress();
     const t0 = performance.now();
     try {
       if (entry.kind === "swf") {
         loadingMessage.value = `正在下载 SWF 共享材质…`;
         await ensureSharedMaterialLoaded(sharedBundles);
+        clearDownloadProgress();
       }
       loadingMessage.value = `正在下载精灵 ${petLabel(entry)}…`;
-      const buffer = await fetchBundleFromIndex(entry);
+      const buffer = await fetchBundleFromIndex(entry, {
+        onProgress: reportDownloadProgress,
+      });
+      clearDownloadProgress();
       loadingMessage.value = `正在解析精灵 ${petLabel(entry)}…`;
       await parseBundleBuffer(buffer, `${entry.name}.bundle`);
       parseMs.value = Math.round(performance.now() - t0);
@@ -202,6 +219,7 @@ export function usePetLoader() {
     } finally {
       loading.value = false;
       loadingMessage.value = null;
+      clearDownloadProgress();
     }
   }
 
@@ -310,6 +328,7 @@ export function usePetLoader() {
     error.value = null;
     remoteLoadContext.value = null;
     loadingMessage.value = null;
+    clearDownloadProgress();
     warnings.value = [];
     parseMs.value = 0;
     lastSwfBuffer = null;
@@ -320,6 +339,7 @@ export function usePetLoader() {
     loading,
     error,
     loadingMessage,
+    downloadProgress,
     remoteLoadContext,
     pet,
     parseMs,
