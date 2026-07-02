@@ -8,11 +8,9 @@ import {
   roundPixelsBitGl,
   type GlProgram,
 } from "pixi.js";
-import type { SwfBlendMode } from "@seer/swf-bundle";
-import { grabModeId } from "./shaders.js";
 
 /** 递增以在热更新后强制重新编译 shader */
-const SHADER_CACHE_VERSION = 4;
+const SHADER_CACHE_VERSION = 11;
 let shaderCacheVersion = -1;
 
 /**
@@ -100,7 +98,12 @@ const swfGrabBitGl = {
   name: "swf-grab-bit",
   vertex: {
     header: /* glsl */ `
+      in float aGrabMode;
       out vec2 vScreenUV;
+      out float vGrabMode;
+    `,
+    start: /* glsl */ `
+      vGrabMode = aGrabMode;
     `,
     end: /* glsl */ `
       vec2 ndc = gl_Position.xy / gl_Position.w;
@@ -111,23 +114,23 @@ const swfGrabBitGl = {
   fragment: {
     header: /* glsl */ `
       uniform sampler2D uGrabTexture;
-      uniform int uGrabMode;
       in vec2 vScreenUV;
+      in float vGrabMode;
     `,
     main: /* glsl */ `
       vec4 grab = texture(uGrabTexture, vScreenUV);
-      if (uGrabMode == 1) {
+      if (vGrabMode == 1.0) {
         outColor = min(grab, outColor);
         outColor.a = grab.a;
-      } else if (uGrabMode == 2) {
+      } else if (vGrabMode == 2.0) {
         outColor = abs(grab - outColor);
         outColor.a = grab.a;
-      } else if (uGrabMode == 3) {
+      } else if (vGrabMode == 3.0) {
         outColor = vec4(1.0 - grab.rgb, grab.a);
-      } else if (uGrabMode == 4) {
+      } else if (vGrabMode == 4.0) {
         outColor = mix(2.0 * grab * outColor, 1.0 - 2.0 * (1.0 - grab) * (1.0 - outColor), step(0.5, grab));
         outColor.a = grab.a;
-      } else if (uGrabMode == 5) {
+      } else if (vGrabMode == 5.0) {
         outColor = mix(2.0 * grab * outColor, 1.0 - (1.0 - grab) * (1.0 - 2.0 * (outColor - 0.5)), step(0.5, outColor));
         outColor.a = grab.a;
       }
@@ -204,10 +207,10 @@ export function createSwfShader(
   atlasWidth: number,
   atlasHeight: number,
   mask = false,
+  grabSource: Texture["source"] | null = null,
 ): Shader {
   const swfUniforms = new UniformGroup({
     uTint: { value: new Float32Array(tint), type: "vec4<f32>" },
-    ...(grab ? { uGrabMode: { value: 0, type: "i32" as const } } : {}),
   });
 
   return new Shader({
@@ -230,23 +233,58 @@ export function createSwfShader(
       uSampler: texture.source.style,
       ...(grab
         ? {
-            uGrabTexture: Texture.EMPTY.source,
-            uGrabSampler: Texture.EMPTY.source.style,
+            uGrabTexture: grabSource ?? Texture.EMPTY.source,
+            uGrabSampler: (grabSource ?? Texture.EMPTY.source).style,
           }
         : {}),
     },
   });
 }
 
+function syncAtlasUniforms(
+  shader: Shader,
+  texture: Texture,
+  tint: [number, number, number, number],
+  atlasWidth: number,
+  atlasHeight: number,
+): void {
+  const swfUniforms = shader.resources.swfUniforms as UniformGroup<{
+    uTint: { value: Float32Array; type: "vec4<f32>" };
+  }>;
+  swfUniforms.uniforms.uTint.set(tint);
+  swfUniforms.update();
+
+  const textureUniforms = shader.resources.textureUniforms as UniformGroup<{
+    uTextureMatrix: { value: Matrix; type: "mat3x3<f32>" };
+    uAtlasSize: { value: Float32Array; type: "vec2<f32>" };
+  }>;
+  const mapCoord = texture.textureMatrix?.mapCoord;
+  if (!mapCoord) {
+    throw new Error("图集 textureMatrix.mapCoord 不可用");
+  }
+  textureUniforms.uniforms.uTextureMatrix.copyFrom(mapCoord);
+  textureUniforms.uniforms.uAtlasSize.set([atlasWidth, atlasHeight]);
+  textureUniforms.update();
+}
+
+function syncAtlasShaderResources(
+  shader: Shader,
+  texture: Texture,
+  tint: [number, number, number, number],
+  atlasWidth: number,
+  atlasHeight: number,
+): void {
+  syncAtlasUniforms(shader, texture, tint, atlasWidth, atlasHeight);
+  shader.resources.uTexture = texture.source;
+  shader.resources.uSampler = texture.source.style;
+}
+
 export function updateSwfShaderResources(
   shader: Shader,
   texture: Texture,
   tint: [number, number, number, number],
-  grab: boolean,
   atlasWidth: number,
   atlasHeight: number,
-  grabBlend?: SwfBlendMode,
-  grabTexture?: Texture,
   mask = false,
 ): void {
   if (mask) {
@@ -262,28 +300,10 @@ export function updateSwfShaderResources(
     return;
   }
 
-  const swfUniforms = shader.resources.swfUniforms as UniformGroup<{
-    uTint: { value: Float32Array; type: "vec4<f32>" };
-    uGrabMode?: { value: number; type: "i32" };
-  }>;
-  swfUniforms.uniforms.uTint.set(tint);
-  swfUniforms.update();
-
-  const textureUniforms = shader.resources.textureUniforms as UniformGroup<{
-    uTextureMatrix: { value: Matrix; type: "mat3x3<f32>" };
-    uAtlasSize: { value: Float32Array; type: "vec2<f32>" };
-  }>;
-  textureUniforms.uniforms.uTextureMatrix.copyFrom(texture.textureMatrix.mapCoord);
-  textureUniforms.uniforms.uAtlasSize.set([atlasWidth, atlasHeight]);
-  textureUniforms.update();
-
-  shader.resources.uTexture = texture.source;
-  shader.resources.uSampler = texture.source.style;
-
-  if (grab && grabTexture) {
-    shader.resources.uGrabTexture = grabTexture.source;
-    shader.resources.uGrabSampler = grabTexture.source.style;
-    swfUniforms.uniforms.uGrabMode = grabModeId(grabBlend);
-    swfUniforms.update();
+  if ("uGrabTexture" in shader.resources) {
+    syncAtlasUniforms(shader, texture, tint, atlasWidth, atlasHeight);
+    return;
   }
+
+  syncAtlasShaderResources(shader, texture, tint, atlasWidth, atlasHeight);
 }

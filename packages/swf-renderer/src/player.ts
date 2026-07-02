@@ -30,6 +30,7 @@ import {
   isMaskClearer,
   isMaskWriter,
 } from "./blend.js";
+import { grabModeId } from "./shaders.js";
 import { createSwfShader, updateSwfShaderResources } from "./swf-shader.js";
 
 export interface SwfPlayerOptions {
@@ -265,33 +266,40 @@ export class SwfPlayer {
 
     try {
       for (let i = 0; i < seq.frames.length; i++) {
-        this.frameIndex = i;
-        this.applyExportTransform(
-          positionBounds,
-          probeLayout.width,
-          probeLayout.height,
-          probeLayout.pixelsPerUnitX,
-          probeLayout.pixelsPerUnitY,
-        );
-        this.renderCurrentFrameMeshes();
-        this.app.renderer.render({
-          container: this.app.stage,
-          target: probeRT,
-          clear: true,
-        });
-        const probePixels = readRenderTexturePixels(
-          this.app,
-          probeRT,
-          probeLayout.width,
-          probeLayout.height,
-        );
-        alphaUnion = mergeAlphaBounds(
-          probePixels,
-          probeLayout.width,
-          probeLayout.height,
-          alphaUnion,
-          transparent,
-        );
+        try {
+          this.frameIndex = i;
+          this.applyExportTransform(
+            positionBounds,
+            probeLayout.width,
+            probeLayout.height,
+            probeLayout.pixelsPerUnitX,
+            probeLayout.pixelsPerUnitY,
+          );
+          this.renderCurrentFrameMeshes();
+          this.app.renderer.render({
+            container: this.app.stage,
+            target: probeRT,
+            clear: true,
+          });
+          const probePixels = readRenderTexturePixels(
+            this.app,
+            probeRT,
+            probeLayout.width,
+            probeLayout.height,
+          );
+          alphaUnion = mergeAlphaBounds(
+            probePixels,
+            probeLayout.width,
+            probeLayout.height,
+            alphaUnion,
+            transparent,
+          );
+        } catch (e) {
+          throw new Error(
+            `导出 alpha 探测第 ${i + 1}/${seq.frames.length} 帧失败: ${e instanceof Error ? e.message : e}`,
+            { cause: e },
+          );
+        }
       }
     } finally {
       probeRT.destroy(true);
@@ -498,49 +506,63 @@ export class SwfPlayer {
     for (let i = 0; i < subMeshes.length; ) {
       const material = subMeshes[i]!.material;
 
-      if (isMaskWriter(material)) {
-        const maskMesh = this.buildSubMeshMesh(frame, subMeshes[i]!, "mask");
-        i++;
-
-        const contentMeshes: Mesh<Geometry, Shader>[] = [];
-        while (i < subMeshes.length && needsStencilTest(subMeshes[i]!.material)) {
-          const masked = subMeshes[i]!;
-          if (needsGrabPass(masked.material)) this.snapshotGrab();
-          contentMeshes.push(this.buildSubMeshMesh(frame, masked, "content"));
+      try {
+        if (isMaskWriter(material)) {
+          const maskMesh = this.buildSubMeshMesh(frame, subMeshes[i]!, "mask");
           i++;
-        }
 
-        if (i < subMeshes.length && isMaskClearer(subMeshes[i]!.material)) {
-          i++;
-        }
-
-        if (contentMeshes.length > 0) {
-          const clipped = new Container();
-          clipped.addChild(maskMesh);
-          clipped.setMask({
-            mask: maskMesh,
-            inverse: false,
-            channel: "alpha",
-          });
-          for (const contentMesh of contentMeshes) {
-            clipped.addChild(contentMesh);
-            this.meshes.push(contentMesh);
+          const contentMeshes: Mesh<Geometry, Shader>[] = [];
+          while (
+            i < subMeshes.length &&
+            needsStencilTest(subMeshes[i]!.material)
+          ) {
+            const masked = subMeshes[i]!;
+            if (needsGrabPass(masked.material)) this.snapshotGrab();
+            contentMeshes.push(this.buildSubMeshMesh(frame, masked, "content"));
+            i++;
           }
-          this.meshes.push(maskMesh);
-          this.stage.addChild(clipped);
+
+          if (i < subMeshes.length && isMaskClearer(subMeshes[i]!.material)) {
+            i++;
+          }
+
+          if (contentMeshes.length > 0) {
+            const clipped = new Container();
+            clipped.addChild(maskMesh);
+            clipped.setMask({
+              mask: maskMesh,
+              inverse: false,
+              channel: "alpha",
+            });
+            for (const contentMesh of contentMeshes) {
+              clipped.addChild(contentMesh);
+              this.meshes.push(contentMesh);
+            }
+            this.meshes.push(maskMesh);
+            this.stage.addChild(clipped);
+          }
+          continue;
         }
-        continue;
-      }
 
-      if (isMaskClearer(material) || needsStencilTest(material)) {
+        if (isMaskClearer(material) || needsStencilTest(material)) {
+          i++;
+          continue;
+        }
+
+        if (needsGrabPass(material)) {
+          this.snapshotGrab();
+        }
+
+        const mesh = this.buildSubMeshMesh(frame, subMeshes[i]!, "content");
+        this.stage.addChild(mesh);
+        this.meshes.push(mesh);
         i++;
-        continue;
+      } catch (e) {
+        throw new Error(
+          `渲染 submesh ${i}（${material.shaderKind}）失败: ${e instanceof Error ? e.message : e}`,
+          { cause: e },
+        );
       }
-
-      const mesh = this.buildSubMeshMesh(frame, subMeshes[i]!, "content");
-      this.stage.addChild(mesh);
-      this.meshes.push(mesh);
-      i++;
     }
   }
 
@@ -598,6 +620,16 @@ export class SwfPlayer {
         aUV: { buffer: new Float32Array(uvs), size: 2 },
         aMulColor: { buffer: new Float32Array(mulColors), size: 4 },
         aAddColor: { buffer: new Float32Array(addColors), size: 4 },
+        ...(grab
+          ? {
+              aGrabMode: {
+                buffer: new Float32Array(vertCount).fill(
+                  grabModeId(material.grabBlend),
+                ),
+                size: 1,
+              },
+            }
+          : {}),
       },
       indexBuffer: new Uint16Array(indices),
     });
@@ -612,11 +644,8 @@ export class SwfPlayer {
       shader,
       this.texture,
       this.tint,
-      grab,
       this.clip!.atlasWidth,
       this.clip!.atlasHeight,
-      material.grabBlend,
-      grab ? this.ensureGrabTexture() : undefined,
       mask,
     );
 
@@ -627,10 +656,26 @@ export class SwfPlayer {
     }) as Mesh<Geometry, Shader>;
 
     if (!mask) {
-      mesh.blendMode = materialToPixiBlend(material).blendMode as never;
+      mesh.blendMode = (
+        grab ? "normal" : materialToPixiBlend(material).blendMode
+      ) as never;
     }
 
     return mesh;
+  }
+
+  private recreateGrabShader(): void {
+    if (!this.clip) return;
+    this.shaders.grab?.destroy();
+    this.shaders.grab = createSwfShader(
+      this.texture,
+      true,
+      this.tint,
+      this.clip.atlasWidth,
+      this.clip.atlasHeight,
+      false,
+      this.grabTexture?.source ?? null,
+    );
   }
 
   private ensureGrabTexture(): RenderTexture {
@@ -639,6 +684,7 @@ export class SwfPlayer {
         Math.max(1, this.app.screen.width),
         Math.max(1, this.app.screen.height),
       );
+      this.recreateGrabShader();
     }
     return this.grabTexture;
   }
@@ -653,6 +699,7 @@ export class SwfPlayer {
     }
     if (!this.grabTexture) {
       this.grabTexture = this.createGrabTexture(width, height);
+      this.recreateGrabShader();
     }
   }
 
