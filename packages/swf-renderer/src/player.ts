@@ -301,12 +301,7 @@ export class SwfPlayer {
       throw new Error("未检测到可导出的非透明像素");
     }
 
-    const plan = planTightExport(
-      alphaUnion,
-      probeLayout,
-      options.scale,
-      pad,
-    );
+    const plan = planTightExport(alphaUnion, probeLayout, options.scale, pad);
 
     const exportRT = RenderTexture.create({
       width: plan.renderLayout.width,
@@ -350,7 +345,9 @@ export class SwfPlayer {
           width: plan.exportWidth,
           height: plan.exportHeight,
         };
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => resolve()),
+        );
       }
     } finally {
       exportRT.destroy(true);
@@ -413,8 +410,12 @@ export class SwfPlayer {
     let dragging = false;
     let lastX = 0;
     let lastY = 0;
+    let pinching = false;
+    let initialPinchDistance = 0;
+    let initialZoom = 1;
 
     canvas.addEventListener("pointerdown", (e: PointerEvent) => {
+      if (pinching) return; // Disable drag during pinch
       dragging = true;
       lastX = e.clientX;
       lastY = e.clientY;
@@ -423,7 +424,7 @@ export class SwfPlayer {
       dragging = false;
     });
     canvas.addEventListener("pointermove", (e: PointerEvent) => {
-      if (!dragging) return;
+      if (!dragging || pinching) return;
       this.root.x += e.clientX - lastX;
       this.root.y += e.clientY - lastY;
       lastX = e.clientX;
@@ -438,6 +439,41 @@ export class SwfPlayer {
       },
       { passive: false },
     );
+
+    // Mobile pinch-to-zoom
+    canvas.addEventListener(
+      "touchstart",
+      (e: TouchEvent) => {
+        if (e.touches.length === 2) {
+          pinching = true;
+          initialPinchDistance = getTouchDistance(e.touches[0], e.touches[1]);
+          initialZoom = this.userZoom;
+        }
+      },
+      { passive: false },
+    );
+
+    canvas.addEventListener(
+      "touchmove",
+      (e: TouchEvent) => {
+        if (!pinching || e.touches.length !== 2) return;
+        e.preventDefault();
+        const currentDistance = getTouchDistance(e.touches[0], e.touches[1]);
+        const scale = currentDistance / initialPinchDistance;
+        this.setZoom(initialZoom * scale);
+      },
+      { passive: false },
+    );
+
+    canvas.addEventListener("touchend", () => {
+      pinching = false;
+    });
+
+    function getTouchDistance(t1: Touch, t2: Touch): number {
+      const dx = t1.clientX - t2.clientX;
+      const dy = t1.clientY - t2.clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
   }
 
   private advanceFrame(): void {
@@ -503,7 +539,10 @@ export class SwfPlayer {
         i++;
 
         const contentMeshes: Mesh<Geometry, Shader>[] = [];
-        while (i < subMeshes.length && needsStencilTest(subMeshes[i]!.material)) {
+        while (
+          i < subMeshes.length &&
+          needsStencilTest(subMeshes[i]!.material)
+        ) {
           const masked = subMeshes[i]!;
           if (needsGrabPass(masked.material)) this.snapshotGrab();
           contentMeshes.push(this.buildSubMeshMesh(frame, masked, "content"));

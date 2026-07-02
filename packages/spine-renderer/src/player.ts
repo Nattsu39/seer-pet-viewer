@@ -358,13 +358,16 @@ export class SpinePlayer {
     let startY = 0;
     let dragCameraX = 0;
     let dragCameraY = 0;
+    let pinching = false;
+    let initialPinchDistance = 0;
+    let initialZoom = 1;
 
     const endDrag = () => {
       dragging = false;
     };
 
     canvas.addEventListener("pointerdown", (e: PointerEvent) => {
-      if (e.button !== 0) return;
+      if (pinching || e.button !== 0) return;
       dragging = true;
       canvas.setPointerCapture(e.pointerId);
       startX = e.clientX;
@@ -376,7 +379,7 @@ export class SpinePlayer {
     canvas.addEventListener("pointercancel", endDrag);
     canvas.addEventListener("lostpointercapture", endDrag);
     canvas.addEventListener("pointermove", (e: PointerEvent) => {
-      if (!dragging) return;
+      if (!dragging || pinching) return;
       const delta = this.screenDeltaToWorld(
         e.clientX - startX,
         e.clientY - startY,
@@ -396,6 +399,41 @@ export class SpinePlayer {
       },
       { passive: false },
     );
+
+    canvas.addEventListener(
+      "touchstart",
+      (e: TouchEvent) => {
+        if (e.touches.length === 2) {
+          pinching = true;
+          initialPinchDistance = getTouchDistance(e.touches[0], e.touches[1]);
+          initialZoom = this.userZoom;
+        }
+      },
+      { passive: false },
+    );
+
+    canvas.addEventListener(
+      "touchmove",
+      (e: TouchEvent) => {
+        if (!pinching || e.touches.length !== 2) return;
+        e.preventDefault();
+        const currentDistance = getTouchDistance(e.touches[0], e.touches[1]);
+        const scale = currentDistance / initialPinchDistance;
+        this.userZoom = Math.max(0.1, Math.min(initialZoom * scale, 16));
+        this.updateCamera(false);
+      },
+      { passive: false },
+    );
+
+    canvas.addEventListener("touchend", () => {
+      pinching = false;
+    });
+
+    function getTouchDistance(t1: Touch, t2: Touch): number {
+      const dx = t1.clientX - t2.clientX;
+      const dy = t1.clientY - t2.clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
   }
 
   private screenDeltaToWorld(dx: number, dy: number): { x: number; y: number } {
