@@ -15,7 +15,7 @@ import {
   Vector3,
 } from "@esotericsoftware/spine-webgl";
 import type { SpineClipData } from "@seer/spine-bundle";
-import { SPINE_PREVIEW_FPS } from "@seer/spine-bundle";
+import { parseAtlasUsesPma, SPINE_PREVIEW_FPS } from "@seer/spine-bundle";
 import {
   computeFittedCanvasLayout,
   finalizeExportPixels,
@@ -79,6 +79,7 @@ export class SpinePlayer {
   private readonly screenScratch = new Vector3();
   private readonly screenScratch2 = new Vector3();
   private exportSuspended = false;
+  private usesPma = true;
 
   async mount(
     parent: HTMLElement,
@@ -98,9 +99,13 @@ export class SpinePlayer {
     this.context = new ManagedWebGLRenderingContext(this.canvas, {
       alpha: true,
       premultipliedAlpha: true,
+      preserveDrawingBuffer: true,
     });
     this.renderer = new SceneRenderer(this.canvas, this.context);
-    this.renderer.skeletonRenderer.premultipliedAlpha = true;
+    const usesPma = parseAtlasUsesPma(clip.atlasText);
+    this.usesPma = usesPma;
+    this.renderer.skeletonRenderer.premultipliedAlpha = usesPma;
+    GLTexture.DISABLE_UNPACK_PREMULTIPLIED_ALPHA_WEBGL = usesPma;
 
     this.atlas = new TextureAtlas(clip.atlasText);
     for (const page of this.atlas.pages) {
@@ -257,9 +262,7 @@ export class SpinePlayer {
     }
 
     const probeLayout = computeFittedCanvasLayout(bounds, PROBE_MAX_SIDE, pad);
-    this.canvas.width = probeLayout.width;
-    this.canvas.height = probeLayout.height;
-    this.renderer.resize(ResizeMode.Expand);
+    this.syncExportViewport(probeLayout.width, probeLayout.height);
     this.applyExportCamera(bounds, probeLayout.width, probeLayout.height, pad);
 
     let alphaUnion: PixelRect | null = null;
@@ -285,9 +288,7 @@ export class SpinePlayer {
     }
 
     const plan = planTightExport(alphaUnion, probeLayout, options.scale, pad);
-    this.canvas.width = plan.renderLayout.width;
-    this.canvas.height = plan.renderLayout.height;
-    this.renderer.resize(ResizeMode.Expand);
+    this.syncExportViewport(plan.renderLayout.width, plan.renderLayout.height);
     this.applyExportCamera(
       bounds,
       plan.renderLayout.width,
@@ -538,8 +539,17 @@ export class SpinePlayer {
     camera.update();
   }
 
+  /** 导出时固定 backing-store 尺寸；勿用 SceneRenderer.resize（会按 CSS client 尺寸覆盖 canvas） */
+  private syncExportViewport(width: number, height: number): void {
+    if (this.canvas.width !== width) this.canvas.width = width;
+    if (this.canvas.height !== height) this.canvas.height = height;
+    const gl = this.context.gl;
+    gl.viewport(0, 0, width, height);
+    this.renderer.camera.setViewport(width, height);
+  }
+
   private renderExport(): void {
-    this.renderer.resize(ResizeMode.Expand);
+    this.syncExportViewport(this.canvas.width, this.canvas.height);
     const gl = this.context.gl;
     if (this.renderWithAlphaClear) {
       gl.clearColor(0, 0, 0, 0);
@@ -549,7 +559,7 @@ export class SpinePlayer {
     }
     gl.clear(gl.COLOR_BUFFER_BIT);
     this.renderer.begin();
-    this.renderer.drawSkeleton(this.skeleton, true);
+    this.renderer.drawSkeleton(this.skeleton, this.usesPma);
     this.renderer.end();
   }
 
@@ -589,7 +599,7 @@ export class SpinePlayer {
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     this.renderer.begin();
-    this.renderer.drawSkeleton(this.skeleton, true);
+    this.renderer.drawSkeleton(this.skeleton, this.usesPma);
     this.renderer.end();
   }
 }

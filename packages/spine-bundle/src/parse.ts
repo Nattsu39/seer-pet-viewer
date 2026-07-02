@@ -6,7 +6,7 @@ import {
   type MonoBehaviour,
   type TextAsset,
 } from "@arkntools/unity-js";
-import { imgBitMapToPixels } from "./atlas.js";
+import { imgBitMapToPixels, parseAtlasUsesPma } from "./atlas.js";
 import { extractSpinePetId } from "./pet-id.js";
 import { loadBundleTexturePixels } from "./texture-loader.js";
 import type {
@@ -284,16 +284,20 @@ export async function parseSpineBundle(
   fileName = "bundle",
 ): Promise<SpineClipData> {
   const core = await parseSpineBundleCore(data, fileName);
+  const pma = parseAtlasUsesPma(core.atlasText);
   const { atlasPixelsToBitmap } = await import("./atlas.js");
   const textures = new Map<string, ImageBitmap>();
   for (const tex of core.texturePixels) {
     textures.set(
       tex.name,
-      await atlasPixelsToBitmap({
-        width: tex.width,
-        height: tex.height,
-        rgba: tex.rgba,
-      }),
+      await atlasPixelsToBitmap(
+        {
+          width: tex.width,
+          height: tex.height,
+          rgba: tex.rgba,
+        },
+        { pma },
+      ),
     );
   }
   return {
