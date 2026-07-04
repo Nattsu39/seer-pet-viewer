@@ -11,3 +11,4 @@ export {
 export * from "./types.js";
 export * from "./mesh.js";
 export * from "./material.js";
+export * from "./export-bounds.js";

@@ -112,6 +112,7 @@ export interface RawMeshData {
 export function buildFrameMesh(
   meshData: RawMeshData,
   materials: SwfMaterialState[],
+  materialPathIds?: string[],
 ): {
   positions: Float32Array;
   uvs: Float32Array;
@@ -173,6 +174,7 @@ export function buildFrameMesh(
       indexCount,
       indexStart,
       material: materials[index] ?? materials[0]!,
+      materialPathId: materialPathIds?.[index] ?? materialPathIds?.[0],
     };
   });
 

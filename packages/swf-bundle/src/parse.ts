@@ -96,7 +96,10 @@ export async function parseBundleCore(
             resolver.resolveMaterialRef(m.m_FileID, BigInt(m.m_PathID), i),
           )
         : [NORMAL_MATERIAL];
-      const mesh = buildFrameMesh(frame.MeshData, materials);
+      const materialPathIds = frame.Materials?.length
+        ? frame.Materials.map((m) => String(m.m_PathID))
+        : undefined;
+      const mesh = buildFrameMesh(frame.MeshData, materials, materialPathIds);
       return {
         labels: frame.Labels ?? [],
         mesh,

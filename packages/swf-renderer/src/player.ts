@@ -8,6 +8,7 @@ import {
   Texture,
 } from "pixi.js";
 import {
+  capLayoutVertexBounds,
   computeReferenceScale,
   planReferenceExport,
   resolveReferenceSequence,
@@ -20,7 +21,11 @@ import type {
   SwfSequence,
   SwfSubMesh,
 } from "@seer/swf-bundle";
-import { insetQuadUvs } from "@seer/swf-bundle";
+import {
+  computeSequenceVertexBounds,
+  insetQuadUvs,
+  isSwfContentLayer,
+} from "@seer/swf-bundle";
 import {
   materialToPixiBlend,
   needsGrabPass,
@@ -40,6 +45,8 @@ export interface SwfCaptureOptions {
   sequence: string;
   scale: number;
   background: number | "transparent";
+  /** 与 pet_export.py RENDER_FX_LAYERS 对应，默认不渲染 add 特效层 */
+  renderFxLayers?: boolean;
 }
 
 export interface SwfCapturedFrame {
@@ -246,10 +253,16 @@ export class SwfPlayer {
     const refSeq = this.clip.sequences.find((s) => s.name === refName);
     if (!refSeq?.frames.length) return;
 
-    const refScale = computeReferenceScale(this.computeSequenceBounds(refSeq));
-    const positionBounds = this.computeSequenceBounds(seq);
+    const renderFxLayers = options.renderFxLayers ?? true;
+
+    const refScale = computeReferenceScale(
+      computeSequenceVertexBounds(refSeq),
+    );
+    const layoutBounds = capLayoutVertexBounds(
+      computeSequenceVertexBounds(seq),
+    );
     const layout = planReferenceExport(
-      positionBounds,
+      layoutBounds,
       refScale,
       options.scale,
     );
@@ -281,13 +294,13 @@ export class SwfPlayer {
         try {
           this.frameIndex = i;
           this.applyExportTransform(
-            positionBounds,
+            layoutBounds,
             layout.width,
             layout.height,
             layout.pixelsPerUnitX,
             layout.pixelsPerUnitY,
           );
-          this.renderCurrentFrameMeshes();
+          this.renderCurrentFrameMeshes({ renderFxLayers });
           this.app.renderer.render({
             container: this.app.stage,
             target: exportRT,
@@ -441,13 +454,15 @@ export class SwfPlayer {
     this.app?.render();
   }
 
-  private renderCurrentFrameMeshes(): void {
+  private renderCurrentFrameMeshes(options?: {
+    renderFxLayers?: boolean;
+  }): void {
     if (!this.sequence) return;
     const frame = this.sequence.frames[this.frameIndex];
     if (!frame) return;
     this.updateBounds(frame);
     this.clearMeshes();
-    this.renderFrame(frame);
+    this.renderFrame(frame, options);
   }
 
   private updateBounds(frame: SwfFrame): void {
@@ -473,14 +488,33 @@ export class SwfPlayer {
     this.meshes = [];
   }
 
-  private renderFrame(frame: SwfFrame): void {
+  private renderFrame(
+    frame: SwfFrame,
+    options?: { renderFxLayers?: boolean },
+  ): void {
+    const renderFx = options?.renderFxLayers ?? true;
     const subMeshes = frame.mesh.subMeshes;
     for (let i = 0; i < subMeshes.length; ) {
-      const material = subMeshes[i]!.material;
+      const subMesh = subMeshes[i]!;
+      const material = subMesh.material;
 
       try {
         if (isMaskWriter(material)) {
-          const maskMesh = this.buildSubMeshMesh(frame, subMeshes[i]!, "mask");
+          if (!renderFx && !isSwfContentLayer(subMesh)) {
+            i++;
+            while (
+              i < subMeshes.length &&
+              needsStencilTest(subMeshes[i]!.material)
+            ) {
+              i++;
+            }
+            if (i < subMeshes.length && isMaskClearer(subMeshes[i]!.material)) {
+              i++;
+            }
+            continue;
+          }
+
+          const maskMesh = this.buildSubMeshMesh(frame, subMesh, "mask");
           i++;
 
           const contentMeshes: Mesh<Geometry, Shader>[] = [];
@@ -521,11 +555,16 @@ export class SwfPlayer {
           continue;
         }
 
+        if (!renderFx && !isSwfContentLayer(subMesh)) {
+          i++;
+          continue;
+        }
+
         if (needsGrabPass(material)) {
           this.snapshotGrab();
         }
 
-        const mesh = this.buildSubMeshMesh(frame, subMeshes[i]!, "content");
+        const mesh = this.buildSubMeshMesh(frame, subMesh, "content");
         this.stage.addChild(mesh);
         this.meshes.push(mesh);
         i++;
@@ -681,31 +720,6 @@ export class SwfPlayer {
     rt.source.scaleMode = "nearest";
     rt.source.alphaMode = "no-premultiply-alpha";
     return rt;
-  }
-
-  private computeSequenceBounds(seq: SwfSequence): {
-    minX: number;
-    minY: number;
-    maxX: number;
-    maxY: number;
-  } {
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const frame of seq.frames) {
-      const pos = frame.mesh.positions;
-      for (let i = 0; i < pos.length; i += 2) {
-        minX = Math.min(minX, pos[i]!);
-        maxX = Math.max(maxX, pos[i]!);
-        minY = Math.min(minY, pos[i + 1]!);
-        maxY = Math.max(maxY, pos[i + 1]!);
-      }
-    }
-    if (!Number.isFinite(minX)) {
-      return { minX: 0, minY: 0, maxX: 1, maxY: 1 };
-    }
-    return { minX, minY, maxX, maxY };
   }
 
   private applyExportTransform(

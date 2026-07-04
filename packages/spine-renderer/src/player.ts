@@ -17,6 +17,7 @@ import {
 import type { SpineClipData } from "@seer/spine-bundle";
 import { parseAtlasUsesPma, SPINE_PREVIEW_FPS } from "@seer/spine-bundle";
 import {
+  capLayoutVertexBounds,
   computeReferenceScale,
   EXPORT_PADDING,
   planReferenceExport,
@@ -260,7 +261,7 @@ export class SpinePlayer {
     }
 
     const frameTotal = this.frameCount;
-    const bounds = this.computeSequenceBounds(frameTotal);
+    const bounds = capLayoutVertexBounds(this.computeSequenceBounds(frameTotal));
     const layout = planReferenceExport(bounds, refScale, options.scale);
     const transparent = options.background === "transparent";
 

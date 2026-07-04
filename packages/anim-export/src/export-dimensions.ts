@@ -17,6 +17,8 @@ export const BASE_EXPORT_CANVAS = 768;
 export const MAX_EXPORT_SIDE = 1920;
 export const EXPORT_PADDING = 16;
 export const TIGHT_CROP_PADDING = 4;
+/** 导出布局顶点包围盒最大宽高比，避免极扁画布压低有效缩放 */
+export const MAX_LAYOUT_ASPECT = 2.5;
 export const REFERENCE_SEQUENCE = "standby";
 export const REFERENCE_SEQUENCE_FALLBACKS = ["await"] as const;
 
@@ -41,6 +43,39 @@ export function resolveReferenceSequence(names: readonly string[]): string {
     if (names.includes(fallback)) return fallback;
   }
   return names[0] ?? REFERENCE_SEQUENCE;
+}
+
+/** 将过宽/过高的顶点包围盒对称收窄，仅用于导出画布尺寸与居中 */
+export function capLayoutVertexBounds(
+  bounds: VertexBounds,
+  maxAspect = MAX_LAYOUT_ASPECT,
+): VertexBounds {
+  const spanX = bounds.maxX - bounds.minX;
+  const spanY = bounds.maxY - bounds.minY;
+  if (spanX <= 0 || spanY <= 0 || maxAspect <= 0) return bounds;
+
+  const cx = (bounds.minX + bounds.maxX) / 2;
+  const cy = (bounds.minY + bounds.maxY) / 2;
+
+  if (spanX / spanY > maxAspect) {
+    const layoutSpanX = spanY * maxAspect;
+    return {
+      minX: cx - layoutSpanX / 2,
+      maxX: cx + layoutSpanX / 2,
+      minY: bounds.minY,
+      maxY: bounds.maxY,
+    };
+  }
+  if (spanY / spanX > maxAspect) {
+    const layoutSpanY = spanX * maxAspect;
+    return {
+      minX: bounds.minX,
+      maxX: bounds.maxX,
+      minY: cy - layoutSpanY / 2,
+      maxY: cy + layoutSpanY / 2,
+    };
+  }
+  return bounds;
 }
 
 export function computeReferenceScale(

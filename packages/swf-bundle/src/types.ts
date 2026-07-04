@@ -35,6 +35,8 @@ export interface SwfSubMesh {
   indexCount: number;
   indexStart: number;
   material: SwfMaterialState;
+  /** Unity 材质 m_PathID，用于导出边界与 pet_export.py 对齐 */
+  materialPathId?: string;
 }
 
 export interface SwfFrameMesh {
