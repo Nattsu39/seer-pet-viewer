@@ -1,2 +1,5 @@
-/** @deprecated 使用 @seer/anim-export 的 tight-export 流程 */
-export const MAX_SPINE_EXPORT_SIDE = 4096;
+/** @deprecated 使用 @seer/anim-export 的 export-dimensions */
+export {
+  BASE_EXPORT_CANVAS,
+  MAX_EXPORT_SIDE,
+} from "@seer/anim-export";

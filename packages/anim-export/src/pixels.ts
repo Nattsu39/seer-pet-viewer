@@ -1,4 +1,4 @@
-const MAX_EXPORT_SIDE = 4096;
+import { MAX_EXPORT_SIDE } from "./export-dimensions.js";
 
 /** 从可能共享大 buffer 的视图中复制紧凑 RGBA（gifenc 用 Uint32Array(rgba.buffer) 会误读全长） */
 export function copyRgbaPixels(

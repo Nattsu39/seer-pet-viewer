@@ -10,7 +10,7 @@ import {
 } from "pixi.js";
 
 /** 递增以在热更新后强制重新编译 shader */
-const SHADER_CACHE_VERSION = 11;
+const SHADER_CACHE_VERSION = 13;
 let shaderCacheVersion = -1;
 
 /**
@@ -119,20 +119,21 @@ const swfGrabBitGl = {
     `,
     main: /* glsl */ `
       vec4 grab = texture(uGrabTexture, vScreenUV);
+      float srcA = outColor.a;
       if (vGrabMode == 1.0) {
         outColor = min(grab, outColor);
-        outColor.a = grab.a;
+        outColor.a = srcA;
       } else if (vGrabMode == 2.0) {
         outColor = abs(grab - outColor);
-        outColor.a = grab.a;
+        outColor.a = srcA;
       } else if (vGrabMode == 3.0) {
-        outColor = vec4(1.0 - grab.rgb, grab.a);
+        outColor = vec4(1.0 - grab.rgb, srcA);
       } else if (vGrabMode == 4.0) {
         outColor = mix(2.0 * grab * outColor, 1.0 - 2.0 * (1.0 - grab) * (1.0 - outColor), step(0.5, grab));
-        outColor.a = grab.a;
+        outColor.a = srcA;
       } else if (vGrabMode == 5.0) {
         outColor = mix(2.0 * grab * outColor, 1.0 - (1.0 - grab) * (1.0 - 2.0 * (outColor - 0.5)), step(0.5, outColor));
-        outColor.a = grab.a;
+        outColor.a = srcA;
       }
     `,
   },
@@ -154,7 +155,8 @@ const swfMaskBitGl = {
       in float vMaskAlpha;
     `,
     main: /* glsl */ `
-      outColor = vec4(1.0, 1.0, 1.0, 1.0);
+      if (outColor.a < 0.01) discard;
+      outColor = vec4(outColor.a);
     `,
   },
 };

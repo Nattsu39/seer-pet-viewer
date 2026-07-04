@@ -8,12 +8,10 @@ import {
   Texture,
 } from "pixi.js";
 import {
-  computeFittedCanvasLayout,
-  finalizeExportPixels,
-  mergeAlphaBounds,
-  planTightExport,
-  PROBE_MAX_SIDE,
-  type PixelRect,
+  computeReferenceScale,
+  planReferenceExport,
+  resolveReferenceSequence,
+  tightCropRgbaFrames,
 } from "@seer/anim-export/capture";
 import { readRenderTexturePixels } from "./read-render-texture-pixels.js";
 import type {
@@ -134,7 +132,10 @@ export class SwfPlayer {
 
     this.setSequence(clip.sequences[0]?.name ?? "standby");
     requestAnimationFrame(() => this.fitToView());
-    this.app.renderer.on("resize", () => this.fitToView());
+    this.app.renderer.on("resize", () => {
+      this.fitToView();
+      this.syncGrabTextureToRenderer();
+    });
 
     this.app.ticker.add((ticker) => {
       if (!this.playing || !this.sequence) return;
@@ -239,18 +240,24 @@ export class SwfPlayer {
       this.setSequence(options.sequence);
     }
 
-    const positionBounds = this.computeSequenceBounds(seq);
-    const pad = 2;
-    const transparent = options.background === "transparent";
-    const probeLayout = computeFittedCanvasLayout(
-      positionBounds,
-      PROBE_MAX_SIDE,
-      pad,
+    const refName = resolveReferenceSequence(
+      this.clip.sequences.map((s) => s.name),
     );
+    const refSeq = this.clip.sequences.find((s) => s.name === refName);
+    if (!refSeq?.frames.length) return;
 
-    const probeRT = RenderTexture.create({
-      width: probeLayout.width,
-      height: probeLayout.height,
+    const refScale = computeReferenceScale(this.computeSequenceBounds(refSeq));
+    const positionBounds = this.computeSequenceBounds(seq);
+    const layout = planReferenceExport(
+      positionBounds,
+      refScale,
+      options.scale,
+    );
+    const transparent = options.background === "transparent";
+
+    const exportRT = RenderTexture.create({
+      width: layout.width,
+      height: layout.height,
       resolution: 1,
     });
     if (transparent) {
@@ -260,9 +267,14 @@ export class SwfPlayer {
       this.app.renderer.background.alpha = 1;
       this.app.renderer.background.color = options.background;
     }
-    this.resizeGrabTexture(probeLayout.width, probeLayout.height);
+    this.resizeGrabTexture(layout.width, layout.height);
 
-    let alphaUnion: PixelRect | null = null;
+    const rendered: {
+      index: number;
+      pixels: Uint8Array;
+      width: number;
+      height: number;
+    }[] = [];
 
     try {
       for (let i = 0; i < seq.frames.length; i++) {
@@ -270,98 +282,58 @@ export class SwfPlayer {
           this.frameIndex = i;
           this.applyExportTransform(
             positionBounds,
-            probeLayout.width,
-            probeLayout.height,
-            probeLayout.pixelsPerUnitX,
-            probeLayout.pixelsPerUnitY,
+            layout.width,
+            layout.height,
+            layout.pixelsPerUnitX,
+            layout.pixelsPerUnitY,
           );
           this.renderCurrentFrameMeshes();
           this.app.renderer.render({
             container: this.app.stage,
-            target: probeRT,
+            target: exportRT,
             clear: true,
           });
-          const probePixels = readRenderTexturePixels(
+          const pixels = readRenderTexturePixels(
             this.app,
-            probeRT,
-            probeLayout.width,
-            probeLayout.height,
+            exportRT,
+            layout.width,
+            layout.height,
           );
-          alphaUnion = mergeAlphaBounds(
-            probePixels,
-            probeLayout.width,
-            probeLayout.height,
-            alphaUnion,
-            transparent,
-          );
+          rendered.push({
+            index: i,
+            pixels,
+            width: layout.width,
+            height: layout.height,
+          });
         } catch (e) {
           throw new Error(
-            `导出 alpha 探测第 ${i + 1}/${seq.frames.length} 帧失败: ${e instanceof Error ? e.message : e}`,
+            `导出第 ${i + 1}/${seq.frames.length} 帧失败: ${e instanceof Error ? e.message : e}`,
             { cause: e },
           );
         }
       }
     } finally {
-      probeRT.destroy(true);
+      exportRT.destroy(true);
     }
 
-    if (!alphaUnion) {
-      throw new Error("未检测到可导出的非透明像素");
+    if (!rendered.length) {
+      throw new Error("未检测到可导出的帧");
     }
 
-    const plan = planTightExport(
-      alphaUnion,
-      probeLayout,
-      options.scale,
-      pad,
-    );
-
-    const exportRT = RenderTexture.create({
-      width: plan.renderLayout.width,
-      height: plan.renderLayout.height,
-      resolution: 1,
-    });
-    this.resizeGrabTexture(plan.renderLayout.width, plan.renderLayout.height);
+    const cropped = tightCropRgbaFrames(rendered);
 
     try {
-      for (let i = 0; i < seq.frames.length; i++) {
-        this.frameIndex = i;
-        this.applyExportTransform(
-          positionBounds,
-          plan.renderLayout.width,
-          plan.renderLayout.height,
-          plan.renderLayout.pixelsPerUnitX,
-          plan.renderLayout.pixelsPerUnitY,
-        );
-        this.renderCurrentFrameMeshes();
-        this.app.renderer.render({
-          container: this.app.stage,
-          target: exportRT,
-          clear: true,
-        });
-
-        const renderPixels = readRenderTexturePixels(
-          this.app,
-          exportRT,
-          plan.renderLayout.width,
-          plan.renderLayout.height,
-        );
+      for (let i = 0; i < cropped.length; i++) {
+        const frame = cropped[i]!;
         yield {
-          index: i,
-          pixels: finalizeExportPixels(
-            renderPixels,
-            plan.renderLayout.width,
-            plan.renderLayout.height,
-            plan,
-            pad,
-          ),
-          width: plan.exportWidth,
-          height: plan.exportHeight,
+          index: rendered[i]!.index,
+          pixels: frame.pixels,
+          width: frame.width,
+          height: frame.height,
         };
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       }
     } finally {
-      exportRT.destroy(true);
       this.app.renderer.background.color = savedBgColor;
       this.app.renderer.background.alpha = savedBgAlpha;
       if (savedSequence && savedSequence !== options.sequence) {
@@ -678,15 +650,16 @@ export class SwfPlayer {
     );
   }
 
+  private syncGrabTextureToRenderer(): void {
+    if (!this.app?.renderer) return;
+    const w = Math.max(1, this.app.renderer.width);
+    const h = Math.max(1, this.app.renderer.height);
+    this.resizeGrabTexture(w, h);
+  }
+
   private ensureGrabTexture(): RenderTexture {
-    if (!this.grabTexture) {
-      this.grabTexture = this.createGrabTexture(
-        Math.max(1, this.app.screen.width),
-        Math.max(1, this.app.screen.height),
-      );
-      this.recreateGrabShader();
-    }
-    return this.grabTexture;
+    this.syncGrabTextureToRenderer();
+    return this.grabTexture!;
   }
 
   private resizeGrabTexture(width: number, height: number): void {

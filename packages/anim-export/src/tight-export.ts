@@ -8,13 +8,7 @@ import {
   scalePixelRect,
   unionPixelRects,
 } from "./alpha-bounds.js";
-
-export interface VertexBounds {
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
-}
+import { MAX_EXPORT_SIDE, type VertexBounds } from "./export-dimensions.js";
 
 export interface FittedCanvasLayout {
   width: number;
@@ -25,7 +19,7 @@ export interface FittedCanvasLayout {
 
 /** 低分辨率探测画布最长边 */
 export const PROBE_MAX_SIDE = 512;
-export const MAX_EXPORT_SIDE = 4096;
+export { MAX_EXPORT_SIDE } from "./export-dimensions.js";
 
 /** 将包围盒均匀缩放装入 maxSide 画布 */
 export function computeFittedCanvasLayout(
@@ -74,6 +68,7 @@ export interface TightExportPlan {
   pixelScale: number;
 }
 
+/** @deprecated 使用 planReferenceExport（standby 参考缩放 + 1920 上限） */
 export function planTightExport(
   alphaUnion: PixelRect,
   probe: FittedCanvasLayout,

@@ -17,12 +17,11 @@ import {
 import type { SpineClipData } from "@seer/spine-bundle";
 import { parseAtlasUsesPma, SPINE_PREVIEW_FPS } from "@seer/spine-bundle";
 import {
-  computeFittedCanvasLayout,
-  finalizeExportPixels,
-  mergeAlphaBounds,
-  planTightExport,
-  PROBE_MAX_SIDE,
-  type PixelRect,
+  computeReferenceScale,
+  EXPORT_PADDING,
+  planReferenceExport,
+  resolveReferenceSequence,
+  tightCropRgbaFrames,
 } from "@seer/anim-export/capture";
 
 export interface SpinePlayerOptions {
@@ -244,13 +243,25 @@ export class SpinePlayer {
 
     this.exportSuspended = true;
     this.pause();
-    if (savedSequence !== options.sequence) {
+
+    const refName = resolveReferenceSequence(this.clip.animations);
+    const refFrameTotal = this.getSequenceFrameCount(refName);
+    if (refFrameTotal <= 0) return;
+
+    if (savedSequence !== refName) {
+      this.setSequence(refName);
+    }
+    const refScale = computeReferenceScale(
+      this.computeSequenceBounds(refFrameTotal),
+    );
+
+    if (options.sequence !== refName) {
       this.setSequence(options.sequence);
     }
 
     const frameTotal = this.frameCount;
     const bounds = this.computeSequenceBounds(frameTotal);
-    const pad = 2;
+    const layout = planReferenceExport(bounds, refScale, options.scale);
     const transparent = options.background === "transparent";
 
     if (transparent) {
@@ -261,61 +272,48 @@ export class SpinePlayer {
       this.renderWithAlphaClear = false;
     }
 
-    const probeLayout = computeFittedCanvasLayout(bounds, PROBE_MAX_SIDE, pad);
-    this.syncExportViewport(probeLayout.width, probeLayout.height);
-    this.applyExportCamera(bounds, probeLayout.width, probeLayout.height, pad);
+    this.syncExportViewport(layout.width, layout.height);
+    this.applyExportCamera(
+      bounds,
+      layout.width,
+      layout.height,
+      EXPORT_PADDING,
+    );
 
-    let alphaUnion: PixelRect | null = null;
+    const rendered: {
+      index: number;
+      pixels: Uint8Array;
+      width: number;
+      height: number;
+    }[] = [];
+
     for (let i = 0; i < frameTotal; i++) {
       this.frameIndex = i;
       this.applyPose(i / SPINE_PREVIEW_FPS);
       this.renderExport();
-      const probePixels = this.readExportPixels(
-        probeLayout.width,
-        probeLayout.height,
-      );
-      alphaUnion = mergeAlphaBounds(
-        probePixels,
-        probeLayout.width,
-        probeLayout.height,
-        alphaUnion,
-        transparent,
-      );
+      const pixels = this.readExportPixels(layout.width, layout.height);
+      rendered.push({
+        index: i,
+        pixels,
+        width: layout.width,
+        height: layout.height,
+      });
     }
 
-    if (!alphaUnion) {
-      throw new Error("未检测到可导出的非透明像素");
+    if (!rendered.length) {
+      throw new Error("未检测到可导出的帧");
     }
 
-    const plan = planTightExport(alphaUnion, probeLayout, options.scale, pad);
-    this.syncExportViewport(plan.renderLayout.width, plan.renderLayout.height);
-    this.applyExportCamera(
-      bounds,
-      plan.renderLayout.width,
-      plan.renderLayout.height,
-      pad,
-    );
+    const cropped = tightCropRgbaFrames(rendered);
 
     try {
-      for (let i = 0; i < frameTotal; i++) {
-        this.frameIndex = i;
-        this.applyPose(i / SPINE_PREVIEW_FPS);
-        this.renderExport();
-        const renderPixels = this.readExportPixels(
-          plan.renderLayout.width,
-          plan.renderLayout.height,
-        );
+      for (let i = 0; i < cropped.length; i++) {
+        const frame = cropped[i]!;
         yield {
-          index: i,
-          pixels: finalizeExportPixels(
-            renderPixels,
-            plan.renderLayout.width,
-            plan.renderLayout.height,
-            plan,
-            pad,
-          ),
-          width: plan.exportWidth,
-          height: plan.exportHeight,
+          index: rendered[i]!.index,
+          pixels: frame.pixels,
+          width: frame.width,
+          height: frame.height,
         };
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       }
