@@ -1,0 +1,55 @@
+name: Update Pet Index
+
+on:
+  schedule:
+    # 北京时间每天 12:00 检查 newseer 清单与图床是否有更新
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-pet-index
+  cancel-in-progress: false
+
+jobs:
+  update-index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+
+      - run: pnpm install
+
+      - name: Refresh GitHub CDN manifest
+        run: pnpm refresh:github-cdn-manifest
+
+      - name: Build pet-anim-index.json
+        run: pnpm build:index
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add tools/data/github-cdn-names.json apps/viewer/public/pet-anim-index.json
+
+          if git diff --staged --quiet; then
+            echo "清单无变化，跳过提交"
+            exit 0
+          fi
+
+          version=$(node -p "require('./apps/viewer/public/pet-anim-index.json').version")
+          mirrored=$(node -p "require('./apps/viewer/public/pet-anim-index.json').entries.filter(e=>e.mirrored).length")
+          cdn_count=$(node -p "require('./tools/data/github-cdn-names.json').names.length")
+
+          git commit -m "$(cat <<EOF
+          chore: update pet-anim-index (${version})
+
+          Refresh remote manifest from newseer.61.com and GitHub CDN mirror list.
+          Mirrored entries: ${mirrored}; CDN manifest: ${cdn_count} bundles.
+          EOF
+          )"
+          git push
