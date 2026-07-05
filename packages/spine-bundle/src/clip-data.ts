@@ -1,9 +1,20 @@
 import type { SpineClipData, SpineClipJson } from "./types.js";
+import { scaleSpineAtlasText } from "./atlas-scale.js";
 import {
   atlasPixelsToBitmap,
   parseAtlasUsesPma,
   prepareSpineAtlasBitmap,
 } from "./atlas.js";
+
+function pageScale(
+  originalWidth: number,
+  originalHeight: number,
+  width: number,
+  height: number,
+): number {
+  if (originalWidth === width && originalHeight === height) return 1;
+  return width / originalWidth;
+}
 
 export async function buildSpineClipData(
   meta: SpineClipJson,
@@ -17,17 +28,20 @@ export async function buildSpineClipData(
 ): Promise<SpineClipData> {
   const pma = parseAtlasUsesPma(meta.atlasText);
   const textures = new Map<string, ImageBitmap>();
+  const pageScales = new Map<string, number>();
   for (const tex of textureBuffers) {
-    textures.set(
+    const prepared = await atlasPixelsToBitmap(
+      {
+        width: tex.width,
+        height: tex.height,
+        rgba: tex.rgba,
+      },
+      { pma },
+    );
+    textures.set(tex.name, prepared.bitmap);
+    pageScales.set(
       tex.name,
-      await atlasPixelsToBitmap(
-        {
-          width: tex.width,
-          height: tex.height,
-          rgba: tex.rgba,
-        },
-        { pma },
-      ),
+      pageScale(tex.width, tex.height, prepared.width, prepared.height),
     );
   }
 
@@ -35,7 +49,7 @@ export async function buildSpineClipData(
     petId: meta.petId,
     name: meta.name,
     skeletonBytes,
-    atlasText: meta.atlasText,
+    atlasText: scaleSpineAtlasText(meta.atlasText, pageScales),
     textures,
     animations: meta.animations,
     scale: meta.scale,
@@ -50,14 +64,22 @@ export async function loadSpineClipPackage(
 ): Promise<SpineClipData> {
   const pma = parseAtlasUsesPma(meta.atlasText);
   const textures = new Map<string, ImageBitmap>();
+  const pageScales = new Map<string, number>();
   for (const [name, bitmap] of textureBitmaps) {
     const texMeta = meta.textures.find((t) => t.name === name);
     if (!texMeta) {
       throw new Error(`meta.json 缺少纹理尺寸: ${name}`);
     }
-    textures.set(
+    const prepared = await prepareSpineAtlasBitmap(
+      bitmap,
+      texMeta.width,
+      texMeta.height,
+      pma,
+    );
+    textures.set(name, prepared.bitmap);
+    pageScales.set(
       name,
-      await prepareSpineAtlasBitmap(bitmap, texMeta.width, texMeta.height, pma),
+      pageScale(texMeta.width, texMeta.height, prepared.width, prepared.height),
     );
   }
   const skeleton =
@@ -68,7 +90,7 @@ export async function loadSpineClipPackage(
     petId: meta.petId,
     name: meta.name,
     skeletonBytes: skeleton,
-    atlasText: meta.atlasText,
+    atlasText: scaleSpineAtlasText(meta.atlasText, pageScales),
     textures,
     animations: meta.animations,
     scale: meta.scale,

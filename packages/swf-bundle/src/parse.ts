@@ -9,7 +9,7 @@ import {
 import { atlasPixelsToBitmap, flipAtlasY, type AtlasPixels } from "./atlas.js";
 import { buildFrameMesh } from "./mesh.js";
 import { MaterialResolver, NORMAL_MATERIAL } from "./material.js";
-import { extractPetId } from "./clip-data.js";
+import { appendAtlasDownscaleWarning, extractPetId } from "./clip-data.js";
 import type {
   SwfClipData,
   SwfFrame,
@@ -127,9 +127,21 @@ export async function parseBundle(
   resolver = new MaterialResolver(),
 ): Promise<SwfClipData> {
   const core = await parseBundleCore(data, fileName, resolver);
-  const atlas = await atlasPixelsToBitmap(core.atlasPixels);
-  const { atlasPixels: _pixels, ...rest } = core;
-  return { ...rest, atlas };
+  const prepared = await atlasPixelsToBitmap(core.atlasPixels);
+  const { atlasPixels: _pixels, materialWarnings, ...rest } = core;
+  return {
+    ...rest,
+    atlas: prepared.bitmap,
+    atlasWidth: prepared.width,
+    atlasHeight: prepared.height,
+    materialWarnings: appendAtlasDownscaleWarning(
+      materialWarnings,
+      prepared.originalWidth,
+      prepared.originalHeight,
+      prepared.width,
+      prepared.height,
+    ),
+  };
 }
 
 /** 在已加载共享材质后，复用现有图集重新解析 mesh 材质 */

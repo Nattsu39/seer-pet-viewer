@@ -1,7 +1,22 @@
+import {
+  fitRgbaToMaxTextureSize,
+  getMaxTextureSize,
+  type FitRgbaResult,
+} from "./max-texture-size.js";
+
 export interface AtlasPixels {
   width: number;
   height: number;
   rgba: Uint8ClampedArray;
+}
+
+export interface PreparedAtlasBitmap {
+  bitmap: ImageBitmap;
+  width: number;
+  height: number;
+  originalWidth: number;
+  originalHeight: number;
+  scaled: boolean;
 }
 
 /** 解析 Spine atlas 页级 `pma:true/false`（默认 true，与 Spine 导出惯例一致） */
@@ -110,6 +125,17 @@ export function prepareSpineAtlasRgba(
   }
 }
 
+async function prepareAndFitSpineAtlasRgba(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  pma: boolean,
+  maxSide = getMaxTextureSize(),
+): Promise<FitRgbaResult> {
+  prepareSpineAtlasRgba(rgba, width, height, pma);
+  return fitRgbaToMaxTextureSize(rgba, width, height, maxSide);
+}
+
 export async function rgbaToImageBitmap(
   width: number,
   height: number,
@@ -137,11 +163,28 @@ export async function rgbaToImageBitmap(
 export async function atlasPixelsToBitmap(
   pixels: AtlasPixels,
   options: { pma?: boolean } = {},
-): Promise<ImageBitmap> {
+): Promise<PreparedAtlasBitmap> {
   const pma = options.pma ?? true;
   const data = new Uint8ClampedArray(pixels.rgba);
-  prepareSpineAtlasRgba(data, pixels.width, pixels.height, pma);
-  return rgbaToImageBitmap(pixels.width, pixels.height, data);
+  const fitted = await prepareAndFitSpineAtlasRgba(
+    data,
+    pixels.width,
+    pixels.height,
+    pma,
+  );
+  const bitmap = await rgbaToImageBitmap(
+    fitted.width,
+    fitted.height,
+    fitted.rgba,
+  );
+  return {
+    bitmap,
+    width: fitted.width,
+    height: fitted.height,
+    originalWidth: fitted.originalWidth,
+    originalHeight: fitted.originalHeight,
+    scaled: fitted.scaled,
+  };
 }
 
 export async function readBitmapPixels(
@@ -163,11 +206,23 @@ export async function prepareSpineAtlasBitmap(
   width: number,
   height: number,
   pma: boolean,
-): Promise<ImageBitmap> {
+): Promise<PreparedAtlasBitmap> {
   const pixels = await readBitmapPixels(bitmap, width, height);
-  prepareSpineAtlasRgba(pixels, width, height, pma);
   bitmap.close?.();
-  return rgbaToImageBitmap(width, height, pixels);
+  const fitted = await prepareAndFitSpineAtlasRgba(pixels, width, height, pma);
+  const prepared = await rgbaToImageBitmap(
+    fitted.width,
+    fitted.height,
+    fitted.rgba,
+  );
+  return {
+    bitmap: prepared,
+    width: fitted.width,
+    height: fitted.height,
+    originalWidth: fitted.originalWidth,
+    originalHeight: fitted.originalHeight,
+    scaled: fitted.scaled,
+  };
 }
 
 export function imgBitMapToPixels(img: {

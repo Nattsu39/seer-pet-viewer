@@ -25,12 +25,12 @@ function getWorker(): Worker {
         return;
       }
       const rgba = new Uint8ClampedArray(atlasRgba as ArrayBuffer);
-      const bitmap = await atlasPixelsToBitmap({
+      const prepared = await atlasPixelsToBitmap({
         width: atlasWidth as number,
         height: atlasHeight as number,
         rgba,
       });
-      const clip = await loadSwfClipPackage(meta as SwfClipJson, bitmap, {
+      const clip = await loadSwfClipPackage(meta as SwfClipJson, prepared.bitmap, {
         atlasPrepared: true,
       });
       handlers.resolve(clip);

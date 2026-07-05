@@ -6,7 +6,8 @@ import {
   type MonoBehaviour,
   type TextAsset,
 } from "@arkntools/unity-js";
-import { imgBitMapToPixels, parseAtlasUsesPma } from "./atlas.js";
+import { imgBitMapToPixels } from "./atlas.js";
+import { buildSpineClipData } from "./clip-data.js";
 import { extractSpinePetId } from "./pet-id.js";
 import { loadBundleTexturePixels } from "./texture-loader.js";
 import type {
@@ -284,30 +285,18 @@ export async function parseSpineBundle(
   fileName = "bundle",
 ): Promise<SpineClipData> {
   const core = await parseSpineBundleCore(data, fileName);
-  const pma = parseAtlasUsesPma(core.atlasText);
-  const { atlasPixelsToBitmap } = await import("./atlas.js");
-  const textures = new Map<string, ImageBitmap>();
-  for (const tex of core.texturePixels) {
-    textures.set(
-      tex.name,
-      await atlasPixelsToBitmap(
-        {
-          width: tex.width,
-          height: tex.height,
-          rgba: tex.rgba,
-        },
-        { pma },
-      ),
-    );
-  }
-  return {
+  const meta: SpineClipJson = {
     petId: core.petId,
     name: core.name,
-    skeletonBytes: core.skeletonBytes,
     atlasText: core.atlasText,
-    textures,
     animations: core.animations,
     scale: core.scale,
     defaultMix: core.defaultMix,
+    textures: core.texturePixels.map((tex) => ({
+      name: tex.name,
+      width: tex.width,
+      height: tex.height,
+    })),
   };
+  return buildSpineClipData(meta, core.skeletonBytes, core.texturePixels);
 }
