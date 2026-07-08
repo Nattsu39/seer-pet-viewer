@@ -6,6 +6,7 @@ import {
   RenderTexture,
   Shader,
   Texture,
+  WebGLRenderer,
 } from "pixi.js";
 import {
   capLayoutVertexBounds,
@@ -58,11 +59,43 @@ export interface SwfCapturedFrame {
 
 type MeshRole = "content" | "mask";
 
+/**
+ * 若图集任一维度超过设备 MAX_TEXTURE_SIZE，用 canvas bilinear 降采样到上限内。
+ * UV 是归一化 [0,1]，降采样后无需改 UV / shader / mesh。
+ * 仅缩超限维度，尽量保真。降采样后释放原图。
+ */
+async function ensureAtlasFitsMaxTextureSize(
+  bitmap: ImageBitmap,
+  maxDim: number,
+): Promise<ImageBitmap> {
+  const { width, height } = bitmap;
+  if (width <= maxDim && height <= maxDim) return bitmap;
+
+  const newWidth = Math.min(width, maxDim);
+  const newHeight = Math.min(height, maxDim);
+  const canvas = document.createElement("canvas");
+  canvas.width = newWidth;
+  canvas.height = newHeight;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return bitmap;
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(bitmap, 0, 0, newWidth, newHeight);
+
+  const result = await createImageBitmap(canvas, {
+    premultiplyAlpha: "none",
+  });
+  bitmap.close();
+  return result;
+}
+
 export class SwfPlayer {
   private app!: Application;
   private root = new Container();
   private stage = new Container();
   private texture!: Texture;
+  private atlasBitmap: ImageBitmap | null = null;
   private clip: SwfClipData | null = null;
   private sequence: SwfSequence | null = null;
   private frameIndex = 0;
@@ -94,10 +127,6 @@ export class SwfPlayer {
   ): Promise<void> {
     this.clip = clip;
     this.tint = options.tint ?? [1, 1, 1, 1];
-    this.texture = Texture.from(clip.atlas);
-    this.texture.source.scaleMode = "nearest";
-    // 直通 alpha 图集 + shader 直通输出 → Pixi 使用 normal-npm 混合（等价于 pet_export PMA over）
-    this.texture.source.alphaMode = "no-premultiply-alpha";
 
     this.app = new Application();
     await this.app.init({
@@ -110,6 +139,19 @@ export class SwfPlayer {
       preference: "webgl",
     });
     parent.appendChild(this.app.canvas);
+
+    // 查询设备 WebGL 最大纹理尺寸，降采样超限图集避免移动端黑方块
+    const gl = (this.app.renderer as WebGLRenderer).gl;
+    const maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
+
+    this.atlasBitmap = await ensureAtlasFitsMaxTextureSize(
+      clip.atlas,
+      maxTextureSize,
+    );
+    this.texture = Texture.from(this.atlasBitmap);
+    this.texture.source.scaleMode = "nearest";
+    // 直通 alpha 图集 + shader 直通输出 → Pixi 使用 normal-npm 混合（等价于 pet_export PMA over）
+    this.texture.source.alphaMode = "no-premultiply-alpha";
 
     this.root.addChild(this.stage);
     this.app.stage.addChild(this.root);
@@ -161,7 +203,8 @@ export class SwfPlayer {
     this.shaders.mask?.destroy();
     this.shaders = { normal: null, grab: null, mask: null };
     this.app?.destroy(true, { children: true });
-    this.clip?.atlas.close();
+    this.atlasBitmap?.close();
+    this.atlasBitmap = null;
   }
 
   setOnFrameChange(cb: (frame: number, total: number) => void): void {
