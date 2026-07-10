@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
-import { resolve } from "node:path";
+import { createReadStream, existsSync } from "node:fs";
+import { resolve, join, normalize } from "node:path";
 
 const unityJsRoot = resolve(
   __dirname,
@@ -8,9 +9,38 @@ const unityJsRoot = resolve(
 );
 
 export default defineConfig(({ command }) => ({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    {
+      name: "serve-repo-examples",
+      configureServer(server) {
+        const examplesRoot = resolve(__dirname, "../../examples");
+        server.middlewares.use("/examples", (req, res, next) => {
+          const urlPath = decodeURIComponent(req.url ?? "").replace(/^\//, "");
+          const filePath = normalize(join(examplesRoot, urlPath));
+          if (!filePath.startsWith(examplesRoot) || !existsSync(filePath)) {
+            next();
+            return;
+          }
+          if (filePath.endsWith(".png")) {
+            res.setHeader("Content-Type", "image/png");
+          } else if (filePath.endsWith(".json")) {
+            res.setHeader("Content-Type", "application/json");
+          }
+          createReadStream(filePath).pipe(res);
+        });
+      },
+    },
+  ],
   resolve: {
     alias: [
+      {
+        find: "@seer/anim-export/texture-alignment",
+        replacement: resolve(
+          __dirname,
+          "../../packages/anim-export/src/texture-alignment.ts",
+        ),
+      },
       {
         find: "@seer/anim-export/capture",
         replacement: resolve(

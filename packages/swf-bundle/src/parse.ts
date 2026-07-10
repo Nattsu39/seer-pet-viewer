@@ -9,7 +9,7 @@ import {
 import { atlasPixelsToBitmap, flipAtlasY, type AtlasPixels } from "./atlas.js";
 import { buildFrameMesh } from "./mesh.js";
 import { MaterialResolver, NORMAL_MATERIAL } from "./material.js";
-import { appendAtlasDownscaleWarning, extractPetId } from "./clip-data.js";
+import { extractPetId } from "./clip-data.js";
 import type {
   SwfClipData,
   SwfFrame,
@@ -134,13 +134,7 @@ export async function parseBundle(
     atlas: prepared.bitmap,
     atlasWidth: prepared.width,
     atlasHeight: prepared.height,
-    materialWarnings: appendAtlasDownscaleWarning(
-      materialWarnings,
-      prepared.originalWidth,
-      prepared.originalHeight,
-      prepared.width,
-      prepared.height,
-    ),
+    materialWarnings,
   };
 }
 

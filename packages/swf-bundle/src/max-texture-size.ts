@@ -12,7 +12,8 @@ export function getMaxTextureSize(): number {
       canvas.getContext("webgl") ??
       canvas.getContext("experimental-webgl")) as WebGLRenderingContext | null;
     if (gl) {
-      cachedMaxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
+      const glMax = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
+      cachedMaxTextureSize = Math.min(glMax, DEFAULT_MAX_TEXTURE_SIZE);
       return cachedMaxTextureSize;
     }
   }
@@ -177,4 +178,12 @@ export function atlasDownscaleWarning(
   maxSide: number,
 ): string {
   return `图集已从 ${originalWidth}×${originalHeight} 缩放至 ${width}×${height}（设备纹理上限 ${maxSide}px）`;
+}
+
+export function atlasTileWarning(
+  width: number,
+  height: number,
+  maxSide: number,
+): string {
+  return `图集 ${width}×${height} 超过设备纹理上限 ${maxSide}px，渲染时将分块加载`;
 }

@@ -11,12 +11,22 @@
     "build": "pnpm build:index && pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "test:baseline": "pnpm --filter @seer/swf-bundle exec vitest run src/parse-baseline.test.ts && node tools/compare-swf-baseline.mjs --serve",
     "export": "uv run --with UnityPy tools/export_swfclip.py",
     "export:spine": "uv run --with UnityPy tools/export_spineclip.py",
-    "deploy:proxy-cloudflare": "pnpm --filter @seer/bundle-proxy-cloudflare deploy:cloudflare"
+    "deploy:proxy-cloudflare": "pnpm --filter @seer/bundle-proxy-cloudflare deploy:cloudflare",
+    "baseline:capture": "node tools/capture-swf-baseline.mjs --serve",
+    "baseline:capture:local": "node tools/capture-swf-baseline.mjs",
+    "baseline:compare": "node tools/compare-swf-baseline.mjs --serve",
+    "baseline:compare:local": "node tools/compare-swf-baseline.mjs",
+    "baseline:detect-misalign": "pnpm --filter @seer/anim-export build && node tools/detect-texture-misalign.mjs"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "@seer/anim-export": "workspace:*",
+    "playwright": "^1.52.0"
   },
   "packageManager": "pnpm@10.29.2+sha512.bef43fa759d91fd2da4b319a5a0d13ef7a45bb985a3d7342058470f9d2051a3ba8674e629672654686ef9443ad13a82da2beb9eeb3e0221c87b8154fff9d74b8"
 }
