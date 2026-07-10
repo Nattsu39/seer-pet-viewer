@@ -45,6 +45,20 @@ export {
 } from "./tight-export.js";
 export type { FittedCanvasLayout, TightExportPlan } from "./tight-export.js";
 export { copyRgbaPixels, flipPixelsY, flipRgbaY, unpremultiplyPixels } from "./pixels.js";
+export {
+  detectTextureMisalignment,
+  DEFAULT_TEXTURE_ALIGNMENT_MAX_SHIFT,
+  DEFAULT_TEXTURE_ALIGNMENT_TOLERANCE,
+  DEFAULT_TEXTURE_MISMATCH_OK,
+  DEFAULT_TEXTURE_MISMATCH_SEVERE,
+  DEFAULT_TEXTURE_SHIFT_GAIN_THRESHOLD,
+} from "./texture-alignment.js";
+export type {
+  RgbaImage,
+  TextureAlignmentOptions,
+  TextureAlignmentReport,
+  TextureAlignmentVerdict,
+} from "./texture-alignment.js";
 export type {
   CaptureOptions,
   CapturedFrame,

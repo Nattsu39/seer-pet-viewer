@@ -25,7 +25,9 @@ import type {
 import {
   computeSequenceVertexBounds,
   insetQuadUvs,
+  insetTileSliceQuadUvs,
   isSwfContentLayer,
+  sliceQuadAcrossTiles,
 } from "@seer/swf-bundle";
 import {
   materialToPixiBlend,
@@ -36,10 +38,17 @@ import {
 } from "./blend.js";
 import { grabModeId } from "./shaders.js";
 import { createSwfShader, updateSwfShaderResources } from "./swf-shader.js";
+import {
+  destroyAtlasLayout,
+  prepareAtlasTiles,
+  type SwfAtlasLayout,
+} from "./atlas-layout.js";
 
 export interface SwfPlayerOptions {
   backgroundColor?: number;
   tint?: [number, number, number, number];
+  /** 测试用：覆盖 WebGL MAX_TEXTURE_SIZE（例如强制 4096 验证分块） */
+  maxTextureSize?: number;
 }
 
 export interface SwfCaptureOptions {
@@ -59,43 +68,18 @@ export interface SwfCapturedFrame {
 
 type MeshRole = "content" | "mask";
 
-/**
- * 若图集任一维度超过设备 MAX_TEXTURE_SIZE，用 canvas bilinear 降采样到上限内。
- * UV 是归一化 [0,1]，降采样后无需改 UV / shader / mesh。
- * 仅缩超限维度，尽量保真。降采样后释放原图。
- */
-async function ensureAtlasFitsMaxTextureSize(
-  bitmap: ImageBitmap,
-  maxDim: number,
-): Promise<ImageBitmap> {
-  const { width, height } = bitmap;
-  if (width <= maxDim && height <= maxDim) return bitmap;
-
-  const newWidth = Math.min(width, maxDim);
-  const newHeight = Math.min(height, maxDim);
-  const canvas = document.createElement("canvas");
-  canvas.width = newWidth;
-  canvas.height = newHeight;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return bitmap;
-
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(bitmap, 0, 0, newWidth, newHeight);
-
-  const result = await createImageBitmap(canvas, {
-    premultiplyAlpha: "none",
-  });
-  bitmap.close();
-  return result;
-}
+type TileShaderSet = {
+  normal: Shader;
+  grab: Shader;
+  mask: Shader;
+};
 
 export class SwfPlayer {
   private app!: Application;
   private root = new Container();
   private stage = new Container();
   private texture!: Texture;
-  private atlasBitmap: ImageBitmap | null = null;
+  private atlasLayout: SwfAtlasLayout | null = null;
   private clip: SwfClipData | null = null;
   private sequence: SwfSequence | null = null;
   private frameIndex = 0;
@@ -115,6 +99,8 @@ export class SwfPlayer {
     grab: null,
     mask: null,
   };
+  /** 分块图集时每个 tile 独立 shader，避免共享 uniform 导致采错纹理 */
+  private tileShaders: TileShaderSet[] | null = null;
   private bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
   private fitScale = 1;
   private userZoom = 1;
@@ -140,44 +126,75 @@ export class SwfPlayer {
     });
     parent.appendChild(this.app.canvas);
 
-    // 查询设备 WebGL 最大纹理尺寸，降采样超限图集避免移动端黑方块
+    // 超限图集按 MAX_TEXTURE_SIZE 分块上传，保留全分辨率
     const gl = (this.app.renderer as WebGLRenderer).gl;
-    const maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
+    const maxTextureSize =
+      options.maxTextureSize ??
+      (gl.getParameter(gl.MAX_TEXTURE_SIZE) as number);
 
-    this.atlasBitmap = await ensureAtlasFitsMaxTextureSize(
+    this.atlasLayout = await prepareAtlasTiles(
       clip.atlas,
+      clip.atlasWidth,
+      clip.atlasHeight,
       maxTextureSize,
     );
-    this.texture = Texture.from(this.atlasBitmap);
-    this.texture.source.scaleMode = "nearest";
-    // 直通 alpha 图集 + shader 直通输出 → Pixi 使用 normal-npm 混合（等价于 pet_export PMA over）
-    this.texture.source.alphaMode = "no-premultiply-alpha";
+    const primaryTile = this.atlasLayout.tiles[0]!;
+    this.texture = primaryTile.texture;
 
     this.root.addChild(this.stage);
     this.app.stage.addChild(this.root);
 
-    this.shaders.normal = createSwfShader(
-      this.texture,
-      false,
-      this.tint,
-      clip.atlasWidth,
-      clip.atlasHeight,
-    );
-    this.shaders.grab = createSwfShader(
-      this.texture,
-      true,
-      this.tint,
-      clip.atlasWidth,
-      clip.atlasHeight,
-    );
-    this.shaders.mask = createSwfShader(
-      this.texture,
-      false,
-      this.tint,
-      clip.atlasWidth,
-      clip.atlasHeight,
-      true,
-    );
+    if (this.atlasLayout.plan) {
+      this.tileShaders = this.atlasLayout.tiles.map((entry) => ({
+        normal: createSwfShader(
+          entry.texture,
+          false,
+          this.tint,
+          entry.tile.width,
+          entry.tile.height,
+        ),
+        grab: createSwfShader(
+          entry.texture,
+          true,
+          this.tint,
+          entry.tile.width,
+          entry.tile.height,
+        ),
+        mask: createSwfShader(
+          entry.texture,
+          false,
+          this.tint,
+          entry.tile.width,
+          entry.tile.height,
+          true,
+        ),
+      }));
+      this.shaders = this.tileShaders[0]!;
+    } else {
+      this.tileShaders = null;
+      this.shaders.normal = createSwfShader(
+        this.texture,
+        false,
+        this.tint,
+        clip.atlasWidth,
+        clip.atlasHeight,
+      );
+      this.shaders.grab = createSwfShader(
+        this.texture,
+        true,
+        this.tint,
+        clip.atlasWidth,
+        clip.atlasHeight,
+      );
+      this.shaders.mask = createSwfShader(
+        this.texture,
+        false,
+        this.tint,
+        clip.atlasWidth,
+        clip.atlasHeight,
+        true,
+      );
+    }
 
     this.setSequence(clip.sequences[0]?.name ?? "standby");
     requestAnimationFrame(() => this.fitToView());
@@ -198,13 +215,27 @@ export class SwfPlayer {
   }
 
   destroy(): void {
-    this.shaders.normal?.destroy();
-    this.shaders.grab?.destroy();
-    this.shaders.mask?.destroy();
+    if (this.tileShaders) {
+      for (const set of this.tileShaders) {
+        set.normal.destroy();
+        set.grab.destroy();
+        set.mask.destroy();
+      }
+      this.tileShaders = null;
+    } else {
+      this.shaders.normal?.destroy();
+      this.shaders.grab?.destroy();
+      this.shaders.mask?.destroy();
+    }
     this.shaders = { normal: null, grab: null, mask: null };
+    this.clearMeshes();
+    if (this.grabTexture) {
+      this.grabTexture.destroy(true);
+      this.grabTexture = null;
+    }
+    destroyAtlasLayout(this.atlasLayout);
+    this.atlasLayout = null;
     this.app?.destroy(true, { children: true });
-    this.atlasBitmap?.close();
-    this.atlasBitmap = null;
   }
 
   setOnFrameChange(cb: (frame: number, total: number) => void): void {
@@ -298,17 +329,11 @@ export class SwfPlayer {
 
     const renderFxLayers = options.renderFxLayers ?? true;
 
-    const refScale = computeReferenceScale(
-      computeSequenceVertexBounds(refSeq),
-    );
+    const refScale = computeReferenceScale(computeSequenceVertexBounds(refSeq));
     const layoutBounds = capLayoutVertexBounds(
       computeSequenceVertexBounds(seq),
     );
-    const layout = planReferenceExport(
-      layoutBounds,
-      refScale,
-      options.scale,
-    );
+    const layout = planReferenceExport(layoutBounds, refScale, options.scale);
     const transparent = options.background === "transparent";
 
     const exportRT = RenderTexture.create({
@@ -387,7 +412,9 @@ export class SwfPlayer {
           width: frame.width,
           height: frame.height,
         };
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => resolve()),
+        );
       }
     } finally {
       this.app.renderer.background.color = savedBgColor;
@@ -408,6 +435,40 @@ export class SwfPlayer {
 
   getCanvas(): HTMLCanvasElement {
     return this.app.canvas as HTMLCanvasElement;
+  }
+
+  /** DEV：分块图集纹理与 shader 尺寸诊断 */
+  getAtlasTileDebugInfo():
+    | Array<{
+        index: number;
+        tile: { width: number; height: number };
+        texture: { width: number; height: number };
+        source: { width: number; height: number };
+        frame: { width: number; height: number };
+        mapCoord: number[];
+      }>
+    | null {
+    if (!this.atlasLayout?.plan || !this.tileShaders) return null;
+    return this.atlasLayout.tiles.map((entry, i) => {
+      const m = entry.texture.textureMatrix.mapCoord;
+      return {
+        index: entry.tile.index,
+        tile: { width: entry.tile.width, height: entry.tile.height },
+        texture: {
+          width: entry.texture.width,
+          height: entry.texture.height,
+        },
+        source: {
+          width: entry.texture.source.width,
+          height: entry.texture.source.height,
+        },
+        frame: {
+          width: entry.texture.frame.width,
+          height: entry.texture.frame.height,
+        },
+        mapCoord: [m.a, m.b, m.c, m.d, m.tx, m.ty],
+      };
+    });
   }
 
   fitToView(): void {
@@ -531,6 +592,21 @@ export class SwfPlayer {
     this.meshes = [];
   }
 
+  private addSubMeshMeshesToStage(meshes: Mesh<Geometry, Shader>[]): void {
+    if (meshes.length === 0) return;
+    if (meshes.length === 1) {
+      this.stage.addChild(meshes[0]!);
+      this.meshes.push(meshes[0]!);
+      return;
+    }
+    const group = new Container();
+    for (const mesh of meshes) {
+      group.addChild(mesh);
+      this.meshes.push(mesh);
+    }
+    this.stage.addChild(group);
+  }
+
   private renderFrame(
     frame: SwfFrame,
     options?: { renderFxLayers?: boolean },
@@ -557,7 +633,7 @@ export class SwfPlayer {
             continue;
           }
 
-          const maskMesh = this.buildSubMeshMesh(frame, subMesh, "mask");
+          const maskMeshes = this.buildSubMeshMeshes(frame, subMesh, "mask");
           i++;
 
           const contentMeshes: Mesh<Geometry, Shader>[] = [];
@@ -567,7 +643,9 @@ export class SwfPlayer {
           ) {
             const masked = subMeshes[i]!;
             if (needsGrabPass(masked.material)) this.snapshotGrab();
-            contentMeshes.push(this.buildSubMeshMesh(frame, masked, "content"));
+            contentMeshes.push(
+              ...this.buildSubMeshMeshes(frame, masked, "content"),
+            );
             i++;
           }
 
@@ -575,11 +653,16 @@ export class SwfPlayer {
             i++;
           }
 
-          if (contentMeshes.length > 0) {
+          if (contentMeshes.length > 0 && maskMeshes.length > 0) {
             const clipped = new Container();
-            clipped.addChild(maskMesh);
+            const maskRoot =
+              maskMeshes.length === 1 ? maskMeshes[0]! : new Container();
+            if (maskMeshes.length > 1) {
+              for (const maskMesh of maskMeshes) maskRoot.addChild(maskMesh);
+            }
+            clipped.addChild(maskRoot);
             clipped.setMask({
-              mask: maskMesh,
+              mask: maskRoot,
               inverse: false,
               channel: "alpha",
             });
@@ -587,7 +670,9 @@ export class SwfPlayer {
               clipped.addChild(contentMesh);
               this.meshes.push(contentMesh);
             }
-            this.meshes.push(maskMesh);
+            for (const maskMesh of maskMeshes) {
+              this.meshes.push(maskMesh);
+            }
             this.stage.addChild(clipped);
           }
           continue;
@@ -607,9 +692,8 @@ export class SwfPlayer {
           this.snapshotGrab();
         }
 
-        const mesh = this.buildSubMeshMesh(frame, subMesh, "content");
-        this.stage.addChild(mesh);
-        this.meshes.push(mesh);
+        const meshes = this.buildSubMeshMeshes(frame, subMesh, "content");
+        this.addSubMeshMeshesToStage(meshes);
         i++;
       } catch (e) {
         throw new Error(
@@ -620,7 +704,18 @@ export class SwfPlayer {
     }
   }
 
-  private buildSubMeshMesh(
+  private buildSubMeshMeshes(
+    frame: SwfFrame,
+    subMesh: SwfSubMesh,
+    role: MeshRole,
+  ): Mesh<Geometry, Shader>[] {
+    if (!this.atlasLayout?.plan) {
+      return [this.buildBatchedSubMeshMesh(frame, subMesh, role)];
+    }
+    return this.buildTiledSubMeshMeshes(frame, subMesh, role);
+  }
+
+  private buildBatchedSubMeshMesh(
     frame: SwfFrame,
     subMesh: SwfSubMesh,
     role: MeshRole,
@@ -668,6 +763,181 @@ export class SwfPlayer {
       }
     }
 
+    return this.createMeshFromGeometry(
+      material,
+      role,
+      positions,
+      uvs,
+      mulColors,
+      addColors,
+      indices,
+      grab,
+      vertCount,
+      this.texture,
+      this.clip!.atlasWidth,
+      this.clip!.atlasHeight,
+    );
+  }
+
+  private buildTiledSubMeshMeshes(
+    frame: SwfFrame,
+    subMesh: SwfSubMesh,
+    role: MeshRole,
+  ): Mesh<Geometry, Shader>[] {
+    const plan = this.atlasLayout!.plan!;
+    const layout = this.atlasLayout!;
+    const logicalW = this.clip!.atlasWidth;
+    const logicalH = this.clip!.atlasHeight;
+    const material = subMesh.material;
+    const mask = role === "mask";
+    const grab = !mask && needsGrabPass(material);
+
+    const start = subMesh.startVertex;
+    const vertCount = (subMesh.indexCount / 6) * 4;
+    const positions: number[] = [];
+    const uvs: number[] = [];
+    const mulColors: number[] = [];
+    const addColors: number[] = [];
+
+    for (let vi = start; vi < start + vertCount; vi++) {
+      positions.push(
+        frame.mesh.positions[vi * 2]!,
+        frame.mesh.positions[vi * 2 + 1]!,
+      );
+      uvs.push(frame.mesh.uvs[vi * 2]!, frame.mesh.uvs[vi * 2 + 1]!);
+      mulColors.push(
+        frame.mesh.mulColors[vi * 4]!,
+        frame.mesh.mulColors[vi * 4 + 1]!,
+        frame.mesh.mulColors[vi * 4 + 2]!,
+        frame.mesh.mulColors[vi * 4 + 3]!,
+      );
+      addColors.push(
+        frame.mesh.addColors[vi * 4]!,
+        frame.mesh.addColors[vi * 4 + 1]!,
+        frame.mesh.addColors[vi * 4 + 2]!,
+        frame.mesh.addColors[vi * 4 + 3]!,
+      );
+    }
+
+    const quadCount = vertCount / 4;
+    type TileBucket = {
+      positions: number[];
+      uvs: number[];
+      mulColors: number[];
+      addColors: number[];
+      indices: number[];
+    };
+
+    const meshes: Mesh<Geometry, Shader>[] = [];
+    let activeTileIndex: number | null = null;
+    let bucket: TileBucket | null = null;
+
+    const flushBucket = (): void => {
+      if (activeTileIndex === null || !bucket || bucket.positions.length === 0) {
+        activeTileIndex = null;
+        bucket = null;
+        return;
+      }
+      const tileEntry = layout.tiles[activeTileIndex];
+      if (!tileEntry) {
+        activeTileIndex = null;
+        bucket = null;
+        return;
+      }
+      const batchVertCount = bucket.positions.length / 2;
+      meshes.push(
+        this.createMeshFromGeometry(
+          material,
+          role,
+          bucket.positions,
+          bucket.uvs,
+          bucket.mulColors,
+          bucket.addColors,
+          bucket.indices,
+          grab,
+          batchVertCount,
+          tileEntry.texture,
+          tileEntry.tile.width,
+          tileEntry.tile.height,
+          activeTileIndex,
+        ),
+      );
+      activeTileIndex = null;
+      bucket = null;
+    };
+
+    const appendSlice = (slice: ReturnType<typeof sliceQuadAcrossTiles>[number]): void => {
+      const tileEntry = layout.tiles[slice.tileIndex];
+      if (!tileEntry) return;
+
+      if (slice.tileIndex !== activeTileIndex) {
+        flushBucket();
+        activeTileIndex = slice.tileIndex;
+        bucket = {
+          positions: [],
+          uvs: [],
+          mulColors: [],
+          addColors: [],
+          indices: [],
+        };
+      }
+
+      const base = bucket!.positions.length / 2;
+      const sliceUvs = [...slice.uvs];
+      insetTileSliceQuadUvs(
+        sliceUvs,
+        0,
+        tileEntry.tile,
+        logicalW,
+        logicalH,
+        slice.clipPxMin,
+        slice.clipPxMax,
+        slice.clipPyMin,
+        slice.clipPyMax,
+      );
+      bucket!.positions.push(...slice.positions);
+      bucket!.uvs.push(...sliceUvs);
+      bucket!.mulColors.push(...slice.mulColors);
+      bucket!.addColors.push(...slice.addColors);
+      bucket!.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    };
+
+    for (let q = 0; q < quadCount; q++) {
+      const slices = sliceQuadAcrossTiles(
+        positions,
+        uvs,
+        q * 8,
+        logicalW,
+        logicalH,
+        plan,
+        mulColors,
+        addColors,
+        q * 4,
+      );
+      for (const slice of slices) {
+        appendSlice(slice);
+      }
+    }
+    flushBucket();
+    return meshes;
+  }
+
+  private createMeshFromGeometry(
+    material: SwfSubMesh["material"],
+    role: MeshRole,
+    positions: number[],
+    uvs: number[],
+    mulColors: number[],
+    addColors: number[],
+    indices: number[],
+    grab: boolean,
+    vertCount: number,
+    texture: Texture,
+    atlasWidth: number,
+    atlasHeight: number,
+    tileIndex?: number,
+  ): Mesh<Geometry, Shader> {
+    const mask = role === "mask";
     const geometry = new Geometry({
       attributes: {
         aPosition: { buffer: new Float32Array(positions), size: 2 },
@@ -688,25 +958,23 @@ export class SwfPlayer {
       indexBuffer: new Uint16Array(indices),
     });
 
-    const shader = mask
-      ? this.shaders.mask!
-      : grab
-        ? this.shaders.grab!
-        : this.shaders.normal!;
+    const shader = this.resolveShader(role, grab, tileIndex);
 
-    updateSwfShaderResources(
-      shader,
-      this.texture,
-      this.tint,
-      this.clip!.atlasWidth,
-      this.clip!.atlasHeight,
-      mask,
-    );
+    if (!this.tileShaders) {
+      updateSwfShaderResources(
+        shader,
+        texture,
+        this.tint,
+        atlasWidth,
+        atlasHeight,
+        mask,
+      );
+    }
 
     const mesh = new Mesh({
       geometry,
       shader,
-      texture: this.texture,
+      texture,
     }) as Mesh<Geometry, Shader>;
 
     if (!mask) {
@@ -718,17 +986,62 @@ export class SwfPlayer {
     return mesh;
   }
 
+  private resolveShader(
+    role: MeshRole,
+    grab: boolean,
+    tileIndex?: number,
+  ): Shader {
+    if (this.tileShaders && tileIndex !== undefined) {
+      const set = this.tileShaders[tileIndex];
+      if (!set) {
+        throw new Error(`tile shader 不存在: ${tileIndex}`);
+      }
+      if (role === "mask") return set.mask;
+      if (grab) return set.grab;
+      return set.normal;
+    }
+    if (role === "mask") return this.shaders.mask!;
+    if (grab) return this.shaders.grab!;
+    return this.shaders.normal!;
+  }
+
   private recreateGrabShader(): void {
     if (!this.clip) return;
+    const grabSource = this.grabTexture?.source ?? null;
+    if (this.tileShaders && this.atlasLayout) {
+      for (let i = 0; i < this.tileShaders.length; i++) {
+        const entry = this.atlasLayout.tiles[i]!;
+        const set = this.tileShaders[i]!;
+        set.grab.destroy();
+        set.grab = createSwfShader(
+          entry.texture,
+          true,
+          this.tint,
+          entry.tile.width,
+          entry.tile.height,
+          false,
+          grabSource,
+        );
+      }
+      this.shaders.grab = this.tileShaders[0]!.grab;
+      return;
+    }
+    const primaryTile = this.atlasLayout?.tiles[0];
+    const atlasW = this.atlasLayout?.plan
+      ? primaryTile!.tile.width
+      : this.clip.atlasWidth;
+    const atlasH = this.atlasLayout?.plan
+      ? primaryTile!.tile.height
+      : this.clip.atlasHeight;
     this.shaders.grab?.destroy();
     this.shaders.grab = createSwfShader(
       this.texture,
       true,
       this.tint,
-      this.clip.atlasWidth,
-      this.clip.atlasHeight,
+      atlasW,
+      atlasH,
       false,
-      this.grabTexture?.source ?? null,
+      grabSource,
     );
   }
 

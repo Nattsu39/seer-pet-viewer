@@ -5,6 +5,7 @@ import { useHistoryOverlay } from "../composables/useHistoryOverlay";
 import { SwfPlayer } from "@seer/swf-renderer";
 import { SpinePlayer } from "@seer/spine-renderer";
 import type { SwfClipData } from "@seer/swf-bundle";
+import { getEffectiveSwfMaxTextureSize } from "../lib/swf-texture";
 import type { SpineClipData } from "@seer/spine-bundle";
 import type { FrameCaptureSource } from "@seer/anim-export";
 import type { PetClip } from "../composables/usePetLoader";
@@ -15,6 +16,7 @@ import {
 } from "../composables/useViewerSettings";
 import { useAnimationExport } from "../composables/useAnimationExport";
 import { getAnimationLabel } from "../lib/animation-labels";
+import { installSwfBaselineHarness } from "../lib/swf-baseline-harness";
 
 const props = withDefaults(
   defineProps<{
@@ -132,6 +134,7 @@ async function initSwfPlayer(clip: SwfClipData) {
   });
   await p.mount(canvasHost.value!, clip, {
     backgroundColor: getCanvasBackgroundColor(),
+    maxTextureSize: getEffectiveSwfMaxTextureSize(),
   });
   p.enablePan();
   p.setSequence(currentSequence.value);
@@ -139,6 +142,12 @@ async function initSwfPlayer(clip: SwfClipData) {
   p.setSpeed(speed.value);
   if (playing.value) p.play();
   swfPlayer.value = p;
+  if (import.meta.env.DEV) {
+    installSwfBaselineHarness({
+      getPlayer: () => swfPlayer.value,
+      getClip: () => (props.pet.type === "swf" ? props.pet.clip : null),
+    });
+  }
 }
 
 async function initSpinePlayer(clip: SpineClipData) {

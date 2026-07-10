@@ -19,6 +19,7 @@ import type {
   PetAnimSharedBundle,
 } from "../lib/pet-anim-index";
 import { fetchBundleFromIndex, isRemoteBundleAllowed, remoteBundleBlockedMessage, type DownloadProgress } from "../lib/remote-bundle";
+import { withRuntimeAtlasTileWarning } from "../lib/swf-texture";
 
 export interface RemoteLoadContext {
   entry: PetAnimIndexEntry;
@@ -71,8 +72,12 @@ export function usePetLoader() {
     return Object.keys(snapshot).length > 0 ? snapshot : undefined;
   }
 
-  function buildSwfWarnings(parseWarnings: string[]): string[] {
-    const out = [...parseWarnings];
+  function buildSwfWarnings(parseWarnings: string[], clip: SwfClipData): string[] {
+    const out = withRuntimeAtlasTileWarning(
+      parseWarnings,
+      clip.atlasWidth,
+      clip.atlasHeight,
+    );
     if (materialCount.value > 0) {
       out.unshift(`已加载 ${materialCount.value} 个 SWF 共享材质`);
     } else if (parseWarnings.some((w) => w.includes("外部文件"))) {
@@ -106,7 +111,7 @@ export function usePetLoader() {
         materialSnapshot(),
       );
       pet.value = { type: "swf", clip };
-      warnings.value = buildSwfWarnings(clip.materialWarnings);
+      warnings.value = buildSwfWarnings(clip.materialWarnings, clip);
     }
   }
 
@@ -149,11 +154,15 @@ export function usePetLoader() {
         pet.value.clip.atlas,
       );
       pet.value = { type: "swf", clip };
-      warnings.value = [
-        `已导入 ${count} 个 SWF 共享材质，并已重新解析当前精灵`,
-        ...w,
-        ...clip.materialWarnings,
-      ];
+      warnings.value = withRuntimeAtlasTileWarning(
+        [
+          `已导入 ${count} 个 SWF 共享材质，并已重新解析当前精灵`,
+          ...w,
+          ...clip.materialWarnings,
+        ],
+        clip.atlasWidth,
+        clip.atlasHeight,
+      );
     } else {
       warnings.value = [
         `已导入 ${count} 个 SWF 共享材质，导入 ppets_* bundle 后将自动应用`,
@@ -250,7 +259,11 @@ export function usePetLoader() {
       const meta = JSON.parse(await metaFile.text()) as SwfClipJson;
       const data = await loadSwfClipPackage(meta, atlasFile);
       pet.value = { type: "swf", clip: data };
-      warnings.value = data.materialWarnings;
+      warnings.value = withRuntimeAtlasTileWarning(
+        data.materialWarnings,
+        data.atlasWidth,
+        data.atlasHeight,
+      );
       parseMs.value = Math.round(performance.now() - t0);
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e);

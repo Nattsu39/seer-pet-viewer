@@ -45,12 +45,35 @@ export function boundsToQuadUvs(
   ];
 }
 
+export interface QuadUvInsetEdges {
+  insetUMin: boolean;
+  insetUMax: boolean;
+  insetVMin: boolean;
+  insetVMax: boolean;
+}
+
 /** 对已展开的 4 顶点 UV 做半 texel 内缩，避免线性过滤采到 padding */
 export function insetQuadUvs(
   uvs: ArrayLike<number>,
   vertexOffset: number,
   atlasWidth: number,
   atlasHeight: number,
+): void {
+  insetQuadUvsSelective(uvs, vertexOffset, atlasWidth, atlasHeight, {
+    insetUMin: true,
+    insetUMax: true,
+    insetVMin: true,
+    insetVMax: true,
+  });
+}
+
+/** 按边选择性内缩；未触及的边保持原 UV（用于 tile 切片仅在外缘 inset） */
+export function insetQuadUvsSelective(
+  uvs: ArrayLike<number>,
+  vertexOffset: number,
+  atlasWidth: number,
+  atlasHeight: number,
+  edges: QuadUvInsetEdges,
 ): void {
   if (atlasWidth <= 2 || atlasHeight <= 2) return;
   const du = 0.5 / atlasWidth;
@@ -68,20 +91,25 @@ export function insetQuadUvs(
     vMin = Math.min(vMin, v);
     vMax = Math.max(vMax, v);
   }
-  if (uMax - uMin <= du * 2 || vMax - vMin <= dv * 2) return;
 
-  uMin += du;
-  uMax -= du;
-  vMin += dv;
-  vMax -= dv;
+  const canInsetU = uMax - uMin > du * 2;
+  const canInsetV = vMax - vMin > dv * 2;
+  const effUMin =
+    edges.insetUMin && canInsetU ? uMin + du : uMin;
+  const effUMax =
+    edges.insetUMax && canInsetU ? uMax - du : uMax;
+  const effVMin =
+    edges.insetVMin && canInsetV ? vMin + dv : vMin;
+  const effVMax =
+    edges.insetVMax && canInsetV ? vMax - dv : vMax;
 
   for (let q = 0; q < 4; q++) {
     const i = vertexOffset + q * 2;
     const u = uvs[i]!;
     const v = uvs[i + 1]!;
-    (uvs as number[])[i] = Math.abs(u - uMin) < Math.abs(u - uMax) ? uMin : uMax;
+    (uvs as number[])[i] = Math.abs(u - uMin) < Math.abs(u - uMax) ? effUMin : effUMax;
     (uvs as number[])[i + 1] =
-      Math.abs(v - vMin) < Math.abs(v - vMax) ? vMin : vMax;
+      Math.abs(v - vMin) < Math.abs(v - vMax) ? effVMin : effVMax;
   }
 }
 

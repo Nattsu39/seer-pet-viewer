@@ -3,6 +3,9 @@ export {
   loadSwfClipPackage,
   swfClipDataToJson,
   extractPetId,
+  appendAtlasTileWarning,
+  filterAtlasTileWarnings,
+  isAtlasTileWarning,
 } from "./clip-data.js";
 export {
   MaterialResolver,
@@ -12,3 +15,5 @@ export * from "./types.js";
 export * from "./mesh.js";
 export * from "./material.js";
 export * from "./export-bounds.js";
+export * from "./atlas-tile.js";
+export { getMaxTextureSize, resetMaxTextureSizeCache } from "./max-texture-size.js";

@@ -12,8 +12,12 @@
       "default": "./dist/index.js"
     },
     "./capture": {
-      "types": "./dist/capture.d.ts",
-      "import": "./dist/capture.js"
+      "types": "./dist/capture.ts",
+      "import": "./dist/capture.ts"
+    },
+    "./texture-alignment": {
+      "types": "./dist/texture-alignment.ts",
+      "import": "./dist/texture-alignment.ts"
     }
   },
   "scripts": {

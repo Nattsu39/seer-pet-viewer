@@ -1,6 +1,6 @@
 import type { SwfClipData, SwfClipJson, ParsedSwfBundle, SwfSequence } from "./types.js";
 import {
-  atlasDownscaleWarning,
+  atlasTileWarning,
   getMaxTextureSize,
 } from "./max-texture-size.js";
 import { prepareAtlasBitmap } from "./atlas.js";
@@ -49,6 +49,30 @@ export function swfClipDataToJson(data: SwfClipData): SwfClipJson {
   };
 }
 
+const ATLAS_TILE_WARNING_SUFFIX = "渲染时将分块加载";
+
+export function isAtlasTileWarning(message: string): boolean {
+  return message.includes(ATLAS_TILE_WARNING_SUFFIX);
+}
+
+/** 去掉加载时写入的过时图集分块提示（实际是否分块由运行时纹理上限决定） */
+export function filterAtlasTileWarnings(warnings: string[]): string[] {
+  return warnings.filter((w) => !isAtlasTileWarning(w));
+}
+
+export function appendAtlasTileWarning(
+  warnings: string[],
+  width: number,
+  height: number,
+  maxSide = getMaxTextureSize(),
+): string[] {
+  if (width <= maxSide && height <= maxSide) return warnings;
+  const message = atlasTileWarning(width, height, maxSide);
+  if (warnings.includes(message)) return warnings;
+  return [...warnings, message];
+}
+
+/** @deprecated 保留兼容；新路径使用 appendAtlasTileWarning */
 export function appendAtlasDownscaleWarning(
   warnings: string[],
   originalWidth: number,
@@ -56,17 +80,10 @@ export function appendAtlasDownscaleWarning(
   width: number,
   height: number,
 ): string[] {
-  if (originalWidth === width && originalHeight === height) return warnings;
-  return [
-    ...warnings,
-    atlasDownscaleWarning(
-      originalWidth,
-      originalHeight,
-      width,
-      height,
-      getMaxTextureSize(),
-    ),
-  ];
+  if (originalWidth === width && originalHeight === height) {
+    return appendAtlasTileWarning(warnings, width, height);
+  }
+  return appendAtlasTileWarning(warnings, originalWidth, originalHeight);
 }
 
 export async function loadSwfClipPackage(
@@ -95,16 +112,10 @@ export async function loadSwfClipPackage(
     petId: meta.petId,
     name: meta.name,
     frameRate: meta.frameRate,
-    atlasWidth: prepared.width,
-    atlasHeight: prepared.height,
+    atlasWidth: meta.atlasWidth,
+    atlasHeight: meta.atlasHeight,
     atlas: prepared.bitmap,
-    materialWarnings: appendAtlasDownscaleWarning(
-      meta.materialWarnings,
-      prepared.originalWidth,
-      prepared.originalHeight,
-      prepared.width,
-      prepared.height,
-    ),
+    materialWarnings: filterAtlasTileWarnings(meta.materialWarnings),
     sequences: meta.sequences.map((seq) => ({
       name: seq.name,
       frames: seq.frames.map((frame) => ({

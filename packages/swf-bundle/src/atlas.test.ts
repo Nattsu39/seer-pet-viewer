@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { bleedAtlasEdges, prepareAtlasRgba, zeroTransparentRgb } from "./atlas.js";
+import { describe, expect, it, vi } from "vitest";
+import {
+  atlasPixelsToBitmap,
+  bleedAtlasEdges,
+  prepareAtlasRgba,
+  zeroTransparentRgb,
+} from "./atlas.js";
 import {
   computeFitTextureSize,
   fitRgbaToMaxTextureSize,
@@ -55,6 +60,50 @@ describe("fitRgbaToMaxTextureSize", () => {
     expect(result.rgba.length).toBe(32 * 32 * 4);
     expect(result.originalWidth).toBe(64);
     expect(result.originalHeight).toBe(64);
+  });
+});
+
+describe("atlasPixelsToBitmap", () => {
+  it("keeps full resolution without downscaling", async () => {
+    const width = 64;
+    const height = 32;
+    const rgba = new Uint8ClampedArray(width * height * 4);
+    for (let i = 0; i < rgba.length; i += 4) {
+      rgba[i] = 10;
+      rgba[i + 1] = 20;
+      rgba[i + 2] = 30;
+      rgba[i + 3] = i % 8 === 0 ? 255 : 0;
+    }
+
+    const close = vi.fn();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(async () => ({ width, height, close })),
+    );
+    if (typeof ImageData === "undefined") {
+      vi.stubGlobal(
+        "ImageData",
+        class {
+          data: Uint8ClampedArray;
+          width: number;
+          height: number;
+          constructor(data: Uint8ClampedArray, w: number, h: number) {
+            this.data = data;
+            this.width = w;
+            this.height = h;
+          }
+        },
+      );
+    }
+
+    const prepared = await atlasPixelsToBitmap({ width, height, rgba });
+    expect(prepared.scaled).toBe(false);
+    expect(prepared.width).toBe(width);
+    expect(prepared.height).toBe(height);
+    expect(prepared.originalWidth).toBe(width);
+    expect(prepared.originalHeight).toBe(height);
+    prepared.bitmap.close();
+    vi.unstubAllGlobals();
   });
 });
 

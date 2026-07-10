@@ -5,6 +5,7 @@ import {
   loadSwfClipPackage,
   MaterialResolver,
 } from "@seer/swf-bundle";
+import { withRuntimeAtlasTileWarning } from "../lib/swf-texture";
 
 export function useSwfLoader() {
   const loading = ref(false);
@@ -23,7 +24,11 @@ export function useSwfLoader() {
       const buffer = await file.arrayBuffer();
       const data = await parseBundleInWorker(buffer, file.name);
       clip.value = data;
-      warnings.value = data.materialWarnings;
+      warnings.value = withRuntimeAtlasTileWarning(
+        data.materialWarnings,
+        data.atlasWidth,
+        data.atlasHeight,
+      );
       parseMs.value = Math.round(performance.now() - t0);
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e);
@@ -47,7 +52,11 @@ export function useSwfLoader() {
       const meta = JSON.parse(await metaFile.text()) as SwfClipJson;
       const data = await loadSwfClipPackage(meta, atlasFile);
       clip.value = data;
-      warnings.value = data.materialWarnings;
+      warnings.value = withRuntimeAtlasTileWarning(
+        data.materialWarnings,
+        data.atlasWidth,
+        data.atlasHeight,
+      );
       parseMs.value = Math.round(performance.now() - t0);
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e);
