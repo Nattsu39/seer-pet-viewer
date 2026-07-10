@@ -7,6 +7,20 @@ export interface PixelRect {
 
 export const DEFAULT_ALPHA_THRESHOLD = 8;
 
+/** 导出紧包围盒 alpha 阈值：忽略抗锯齿/溢出的极低透明度碎屑 */
+export const EXPORT_BOUNDS_ALPHA_THRESHOLD = 32;
+
+/**
+ * 边列/边行计入包围盒所需的最少显著像素数。
+ * 用于从四边剥除仅含少量像素的稀疏条带（如 1–2px 边缘碎屑）。
+ */
+export const EXPORT_BOUNDS_MIN_EDGE_OPAQUE = 4;
+
+export interface SignificantAlphaBoundsOptions {
+  alphaThreshold?: number;
+  minEdgeOpaque?: number;
+}
+
 export function pixelRectWidth(rect: PixelRect): number {
   return rect.maxX - rect.minX + 1;
 }
@@ -41,6 +55,50 @@ export function findAlphaBounds(
   }
 
   if (maxX < 0) return null;
+  return { minX, minY, maxX, maxY };
+}
+
+/**
+ * 导出用紧包围盒：先按较高 alpha 阈值取范围，再从四边剥除稀疏边列/边行。
+ */
+export function findSignificantAlphaBounds(
+  pixels: Uint8Array | Uint8ClampedArray,
+  width: number,
+  height: number,
+  options: SignificantAlphaBoundsOptions = {},
+): PixelRect | null {
+  const alphaThreshold =
+    options.alphaThreshold ?? EXPORT_BOUNDS_ALPHA_THRESHOLD;
+  const minEdgeOpaque = options.minEdgeOpaque ?? EXPORT_BOUNDS_MIN_EDGE_OPAQUE;
+  const base = findAlphaBounds(pixels, width, height, alphaThreshold);
+  if (!base || minEdgeOpaque <= 1) return base;
+
+  let { minX, minY, maxX, maxY } = base;
+  const rowBytes = width * 4;
+
+  const countColumn = (x: number): number => {
+    let count = 0;
+    for (let y = minY; y <= maxY; y++) {
+      if (pixels[y * rowBytes + x * 4 + 3]! > alphaThreshold) count++;
+    }
+    return count;
+  };
+
+  const countRow = (y: number): number => {
+    const row = y * rowBytes;
+    let count = 0;
+    for (let x = minX; x <= maxX; x++) {
+      if (pixels[row + x * 4 + 3]! > alphaThreshold) count++;
+    }
+    return count;
+  };
+
+  while (minX <= maxX && countColumn(minX) < minEdgeOpaque) minX++;
+  while (minX <= maxX && countColumn(maxX) < minEdgeOpaque) maxX--;
+  while (minY <= maxY && countRow(minY) < minEdgeOpaque) minY++;
+  while (minY <= maxY && countRow(maxY) < minEdgeOpaque) maxY--;
+
+  if (minX > maxX || minY > maxY) return null;
   return { minX, minY, maxX, maxY };
 }
 

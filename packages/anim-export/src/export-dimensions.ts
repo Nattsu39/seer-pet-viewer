@@ -1,7 +1,6 @@
 import {
   cropRgbaPixels,
-  DEFAULT_ALPHA_THRESHOLD,
-  findAlphaBounds,
+  findSignificantAlphaBounds,
   unionPixelRects,
   type PixelRect,
 } from "./alpha-bounds.js";
@@ -164,13 +163,16 @@ function expandPixelRect(
 export function tightCropRgbaFrames(
   frames: RgbaFrame[],
   cropPadding = TIGHT_CROP_PADDING,
-  alphaThreshold = DEFAULT_ALPHA_THRESHOLD,
 ): RgbaFrame[] {
   let union: PixelRect | null = null;
   for (const frame of frames) {
     union = unionPixelRects(
       union,
-      findAlphaBounds(frame.pixels, frame.width, frame.height, alphaThreshold),
+      findSignificantAlphaBounds(
+        frame.pixels,
+        frame.width,
+        frame.height,
+      ),
     );
   }
   if (!union) return frames;

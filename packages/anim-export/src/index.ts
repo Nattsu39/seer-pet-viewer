@@ -29,12 +29,16 @@ export {
   computeTightExportSize,
   cropRgbaPixels,
   findAlphaBounds,
+  findSignificantAlphaBounds,
   pixelRectHeight,
   pixelRectWidth,
   scalePixelRect,
   unionPixelRects,
   DEFAULT_ALPHA_THRESHOLD,
+  EXPORT_BOUNDS_ALPHA_THRESHOLD,
+  EXPORT_BOUNDS_MIN_EDGE_OPAQUE,
 } from "./alpha-bounds.js";
+export type { SignificantAlphaBoundsOptions } from "./alpha-bounds.js";
 export type { PixelRect } from "./alpha-bounds.js";
 export {
   computeFittedCanvasLayout,
