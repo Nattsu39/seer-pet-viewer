@@ -3,6 +3,8 @@ import { ref, watch, onBeforeUnmount, computed, nextTick } from "vue";
 import ExportModal from "./ExportModal.vue";
 import { useHistoryOverlay } from "../composables/useHistoryOverlay";
 import { SwfPlayer } from "@seer/swf-renderer";
+import { ensureSwfClipAtlas } from "@seer/swf-bundle/parse";
+import { disposePetClip } from "../lib/dispose-pet-clip";
 import { SpinePlayer } from "@seer/spine-renderer";
 import type { SwfClipData } from "@seer/swf-bundle";
 import { getEffectiveSwfMaxTextureSize } from "../lib/swf-texture";
@@ -111,13 +113,15 @@ function syncPlayerBackground() {
   spinePlayer.value?.setBackgroundColor(bg);
 }
 
-async function initSwfPlayer(clip: SwfClipData) {
+async function initSwfPlayer(clip: SwfClipData, bundleBuffer?: ArrayBuffer | null) {
   spinePlayer.value?.destroy();
   spinePlayer.value = null;
 
   currentSequence.value = clip.sequences[0]?.name ?? "standby";
   syncFrameCount();
   currentFrame.value = 0;
+
+  await ensureSwfClipAtlas(clip, bundleBuffer);
 
   const p = new SwfPlayer();
   p.setOnFrameChange((frame, total) => {
@@ -135,6 +139,7 @@ async function initSwfPlayer(clip: SwfClipData) {
   await p.mount(canvasHost.value!, clip, {
     backgroundColor: getCanvasBackgroundColor(),
     maxTextureSize: getEffectiveSwfMaxTextureSize(),
+    releaseAtlasAfterSplit: bundleBuffer != null,
   });
   p.enablePan();
   p.setSequence(currentSequence.value);
@@ -192,11 +197,20 @@ async function initPlayer() {
   swfPlayer.value = null;
   spinePlayer.value = null;
 
+  if (activeClip && activeClip !== props.pet) {
+    disposePetClip(activeClip);
+    activeClip = null;
+  }
+
   if (props.pet.type === "swf") {
-    await initSwfPlayer(props.pet.clip);
+    await initSwfPlayer(
+      props.pet.clip,
+      props.pet.bundleBuffer ?? null,
+    );
   } else {
     await initSpinePlayer(props.pet.clip);
   }
+  activeClip = props.pet;
 }
 
 watch(
@@ -253,6 +267,22 @@ function fitView() {
 
 let fitViewFrame = 0;
 let hostResizeObserver: ResizeObserver | null = null;
+let activeClip: PetClip | null = null;
+
+function teardownViewer(): void {
+  hostResizeObserver?.disconnect();
+  hostResizeObserver = null;
+  cancelAnimationFrame(fitViewFrame);
+  fitViewFrame = 0;
+  swfPlayer.value?.destroy();
+  spinePlayer.value?.destroy();
+  swfPlayer.value = null;
+  spinePlayer.value = null;
+  if (activeClip) {
+    disposePetClip(activeClip);
+    activeClip = null;
+  }
+}
 
 function scheduleFitView() {
   cancelAnimationFrame(fitViewFrame);
@@ -333,10 +363,7 @@ const exportProgressLabel = computed(() => {
 });
 
 onBeforeUnmount(() => {
-  hostResizeObserver?.disconnect();
-  cancelAnimationFrame(fitViewFrame);
-  swfPlayer.value?.destroy();
-  spinePlayer.value?.destroy();
+  teardownViewer();
 });
 
 defineExpose({ fitView });

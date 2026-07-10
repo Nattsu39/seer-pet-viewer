@@ -9,7 +9,7 @@ import {
 import { atlasPixelsToBitmap, flipAtlasY, type AtlasPixels } from "./atlas.js";
 import { buildFrameMesh } from "./mesh.js";
 import { MaterialResolver, NORMAL_MATERIAL } from "./material.js";
-import { extractPetId } from "./clip-data.js";
+import { extractPetId, isSwfAtlasReleased } from "./clip-data.js";
 import type {
   SwfClipData,
   SwfFrame,
@@ -138,6 +138,30 @@ export async function parseBundle(
   };
 }
 
+/** 从 bundle 仅提取图集位图（用于分块后 remount / 材质重解析） */
+export async function extractAtlasBitmapFromBundle(
+  data: ArrayBuffer | Uint8Array,
+): Promise<ImageBitmap> {
+  const bundle = await loadAssetBundle(data);
+  const atlasPixels = loadAtlasPixels(bundle);
+  const prepared = await atlasPixelsToBitmap(atlasPixels);
+  return prepared.bitmap;
+}
+
+/** 分块渲染释放原图集后，在 remount 前从 bundle 恢复 */
+export async function ensureSwfClipAtlas(
+  clip: SwfClipData,
+  bundleBuffer?: ArrayBuffer | null,
+): Promise<void> {
+  if (!isSwfAtlasReleased(clip.atlas)) return;
+  if (!bundleBuffer) {
+    throw new Error(
+      "图集已在分块渲染后释放；请重新加载 bundle 或预转换 swfclip 包",
+    );
+  }
+  clip.atlas = await extractAtlasBitmapFromBundle(bundleBuffer);
+}
+
 /** 在已加载共享材质后，复用现有图集重新解析 mesh 材质 */
 export async function reparseSwfClip(
   data: ArrayBuffer | Uint8Array,
@@ -146,8 +170,17 @@ export async function reparseSwfClip(
   atlas: ImageBitmap,
 ): Promise<SwfClipData> {
   const core = await parseBundleCore(data, fileName, resolver);
-  const { atlasPixels: _pixels, ...rest } = core;
-  return { ...rest, atlas };
+  let atlasBitmap = atlas;
+  if (isSwfAtlasReleased(atlas)) {
+    const prepared = await atlasPixelsToBitmap(core.atlasPixels);
+    atlasBitmap = prepared.bitmap;
+  }
+  const { atlasPixels: _pixels, materialWarnings, ...rest } = core;
+  return {
+    ...rest,
+    atlas: atlasBitmap,
+    materialWarnings,
+  };
 }
 
 export async function loadMaterialBundle(

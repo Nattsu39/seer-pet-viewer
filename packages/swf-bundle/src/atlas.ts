@@ -145,7 +145,10 @@ export async function rgbaToImageBitmap(
 export async function atlasPixelsToBitmap(
   pixels: AtlasPixels,
 ): Promise<PreparedAtlasBitmap> {
-  const data = new Uint8ClampedArray(pixels.rgba);
+  const data =
+    pixels.rgba instanceof Uint8ClampedArray
+      ? pixels.rgba
+      : new Uint8ClampedArray(pixels.rgba);
   const prepared = await prepareAtlasRgbaOnly(data, pixels.width, pixels.height);
   const bitmap = await rgbaToImageBitmap(
     prepared.width,

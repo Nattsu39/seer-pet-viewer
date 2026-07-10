@@ -100,6 +100,10 @@ export async function loadSpineClipPackage(
 
 export function closeSpineClipData(clip: SpineClipData): void {
   for (const bitmap of clip.textures.values()) {
-    bitmap.close();
+    if (bitmap.width > 0 && bitmap.height > 0) {
+      bitmap.close();
+    }
   }
+  clip.textures.clear();
+  clip.skeletonBytes = new Uint8Array(0);
 }

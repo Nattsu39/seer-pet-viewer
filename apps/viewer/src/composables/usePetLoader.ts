@@ -5,6 +5,7 @@ import {
   loadSwfClipPackage,
   MaterialResolver,
   SHARED_SWF_MATERIAL_BUNDLE_NAME,
+  terminateParserWorker,
   type SwfClipJson,
 } from "@seer/swf-bundle";
 import type { SpineClipData } from "@seer/spine-bundle";
@@ -12,6 +13,7 @@ import {
   detectBundleKind,
   parseSpineBundleInWorker,
   loadSpineClipPackage,
+  terminateSpineParserWorker,
   type SpineClipJson,
 } from "@seer/spine-bundle";
 import type {
@@ -35,7 +37,7 @@ function petLabel(entry: PetAnimIndexEntry): string {
 }
 
 export type PetClip =
-  | { type: "swf"; clip: SwfClipData }
+  | { type: "swf"; clip: SwfClipData; bundleBuffer?: ArrayBuffer | null }
   | { type: "spine"; clip: SpineClipData };
 
 const SHARED_MATERIAL_BASE_NAME = SHARED_SWF_MATERIAL_BUNDLE_NAME.replace(
@@ -110,7 +112,7 @@ export function usePetLoader() {
         lastSwfFileName,
         materialSnapshot(),
       );
-      pet.value = { type: "swf", clip };
+      pet.value = { type: "swf", clip, bundleBuffer: lastSwfBuffer };
       warnings.value = buildSwfWarnings(clip.materialWarnings, clip);
     }
   }
@@ -153,7 +155,7 @@ export function usePetLoader() {
         materialResolver,
         pet.value.clip.atlas,
       );
-      pet.value = { type: "swf", clip };
+      pet.value = { type: "swf", clip, bundleBuffer: lastSwfBuffer };
       warnings.value = withRuntimeAtlasTileWarning(
         [
           `已导入 ${count} 个 SWF 共享材质，并已重新解析当前精灵`,
@@ -346,6 +348,8 @@ export function usePetLoader() {
     parseMs.value = 0;
     lastSwfBuffer = null;
     lastSwfFileName = "";
+    terminateParserWorker();
+    terminateSpineParserWorker();
   }
 
   return {

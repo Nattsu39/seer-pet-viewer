@@ -86,6 +86,19 @@ export function appendAtlasDownscaleWarning(
   return appendAtlasTileWarning(warnings, originalWidth, originalHeight);
 }
 
+export function isSwfAtlasReleased(atlas: ImageBitmap): boolean {
+  return atlas.width === 0 || atlas.height === 0;
+}
+
+/** 释放 SwfClipData 占用的 CPU 资源（图集位图与帧 mesh 缓冲） */
+export function disposeSwfClipData(clip: SwfClipData): void {
+  if (!isSwfAtlasReleased(clip.atlas)) {
+    clip.atlas.close();
+  }
+  clip.sequences = [];
+  clip.materialWarnings = [];
+}
+
 export async function loadSwfClipPackage(
   meta: SwfClipJson,
   atlas: Blob | ImageBitmap,

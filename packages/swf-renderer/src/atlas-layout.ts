@@ -19,11 +19,17 @@ export interface SwfAtlasLayout {
   split: boolean;
 }
 
+export interface PrepareAtlasTilesOptions {
+  /** 分块成功后 close() 原始图集，避免大图与 tile 副本双倍驻留 */
+  releaseSource?: boolean;
+}
+
 export async function prepareAtlasTiles(
   atlas: ImageBitmap,
   logicalWidth: number,
   logicalHeight: number,
   maxTileSize: number,
+  options: PrepareAtlasTilesOptions = {},
 ): Promise<SwfAtlasLayout> {
   const plan = planAtlasTileGrid(logicalWidth, logicalHeight, maxTileSize);
   if (!plan) {
@@ -52,6 +58,9 @@ export async function prepareAtlasTiles(
   }
 
   const bitmaps = await splitAtlasBitmap(atlas, plan);
+  if (options.releaseSource) {
+    atlas.close();
+  }
   const tiles = plan.tiles.map((tile, i) => {
     const bitmap = bitmaps[i]!;
     const texture = Texture.from(bitmap);
@@ -64,9 +73,13 @@ export async function prepareAtlasTiles(
 }
 
 export function destroyAtlasLayout(layout: SwfAtlasLayout | null): void {
-  if (!layout?.split) return;
+  if (!layout) return;
   for (const entry of layout.tiles) {
-    entry.bitmap.close();
+    if (layout.split) {
+      if (entry.bitmap.width > 0 && entry.bitmap.height > 0) {
+        entry.bitmap.close();
+      }
+    }
     if (!entry.texture.destroyed) {
       entry.texture.destroy(true);
     }

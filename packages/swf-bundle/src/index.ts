@@ -6,6 +6,8 @@ export {
   appendAtlasTileWarning,
   filterAtlasTileWarnings,
   isAtlasTileWarning,
+  isSwfAtlasReleased,
+  disposeSwfClipData,
 } from "./clip-data.js";
 export {
   MaterialResolver,

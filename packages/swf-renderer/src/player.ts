@@ -7,6 +7,7 @@ import {
   Shader,
   Texture,
   WebGLRenderer,
+  type Ticker,
 } from "pixi.js";
 import {
   capLayoutVertexBounds,
@@ -49,6 +50,11 @@ export interface SwfPlayerOptions {
   tint?: [number, number, number, number];
   /** 测试用：覆盖 WebGL MAX_TEXTURE_SIZE（例如强制 4096 验证分块） */
   maxTextureSize?: number;
+  /**
+   * 图集分块后释放 clip.atlas 原始大图（需保留 bundle 以便 remount 时恢复）。
+   * 预转换 swfclip 目录加载时应为 false。
+   */
+  releaseAtlasAfterSplit?: boolean;
 }
 
 export interface SwfCaptureOptions {
@@ -105,6 +111,19 @@ export class SwfPlayer {
   private fitScale = 1;
   private userZoom = 1;
   private onFrameChange?: (frame: number, total: number) => void;
+  private readonly handleTick = (ticker: Ticker): void => {
+    if (!this.playing || !this.sequence) return;
+    this.accumulator += (ticker.deltaMS / 1000) * this.speed;
+    const frameDuration = 1 / (this.clip?.frameRate ?? 24);
+    while (this.accumulator >= frameDuration) {
+      this.accumulator -= frameDuration;
+      this.advanceFrame();
+    }
+  };
+  private readonly handleRendererResize = (): void => {
+    this.fitToView();
+    this.syncGrabTextureToRenderer();
+  };
 
   async mount(
     parent: HTMLElement,
@@ -137,6 +156,7 @@ export class SwfPlayer {
       clip.atlasWidth,
       clip.atlasHeight,
       maxTextureSize,
+      { releaseSource: options.releaseAtlasAfterSplit ?? false },
     );
     const primaryTile = this.atlasLayout.tiles[0]!;
     this.texture = primaryTile.texture;
@@ -196,25 +216,14 @@ export class SwfPlayer {
       );
     }
 
-    this.setSequence(clip.sequences[0]?.name ?? "standby");
     requestAnimationFrame(() => this.fitToView());
-    this.app.renderer.on("resize", () => {
-      this.fitToView();
-      this.syncGrabTextureToRenderer();
-    });
-
-    this.app.ticker.add((ticker) => {
-      if (!this.playing || !this.sequence) return;
-      this.accumulator += (ticker.deltaMS / 1000) * this.speed;
-      const frameDuration = 1 / (this.clip?.frameRate ?? 24);
-      while (this.accumulator >= frameDuration) {
-        this.accumulator -= frameDuration;
-        this.advanceFrame();
-      }
-    });
+    this.app.renderer.on("resize", this.handleRendererResize);
+    this.app.ticker.add(this.handleTick);
   }
 
   destroy(): void {
+    this.playing = false;
+    this.onFrameChange = undefined;
     if (this.tileShaders) {
       for (const set of this.tileShaders) {
         set.normal.destroy();
@@ -235,7 +244,15 @@ export class SwfPlayer {
     }
     destroyAtlasLayout(this.atlasLayout);
     this.atlasLayout = null;
-    this.app?.destroy(true, { children: true });
+    if (this.app) {
+      this.app.ticker.remove(this.handleTick);
+      this.app.renderer.off("resize", this.handleRendererResize);
+      const canvas = this.app.canvas;
+      canvas.parentElement?.removeChild(canvas);
+      this.app.destroy(true, { children: true });
+    }
+    this.clip = null;
+    this.sequence = null;
   }
 
   setOnFrameChange(cb: (frame: number, total: number) => void): void {
