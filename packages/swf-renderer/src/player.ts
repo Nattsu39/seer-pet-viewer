@@ -438,18 +438,16 @@ export class SwfPlayer {
   }
 
   /** DEV：分块图集纹理与 shader 尺寸诊断 */
-  getAtlasTileDebugInfo():
-    | Array<{
-        index: number;
-        tile: { width: number; height: number };
-        texture: { width: number; height: number };
-        source: { width: number; height: number };
-        frame: { width: number; height: number };
-        mapCoord: number[];
-      }>
-    | null {
+  getAtlasTileDebugInfo(): Array<{
+    index: number;
+    tile: { width: number; height: number };
+    texture: { width: number; height: number };
+    source: { width: number; height: number };
+    frame: { width: number; height: number };
+    mapCoord: number[];
+  }> | null {
     if (!this.atlasLayout?.plan || !this.tileShaders) return null;
-    return this.atlasLayout.tiles.map((entry, i) => {
+    return this.atlasLayout.tiles.map((entry) => {
       const m = entry.texture.textureMatrix.mapCoord;
       return {
         index: entry.tile.index,
@@ -833,7 +831,11 @@ export class SwfPlayer {
     let bucket: TileBucket | null = null;
 
     const flushBucket = (): void => {
-      if (activeTileIndex === null || !bucket || bucket.positions.length === 0) {
+      if (
+        activeTileIndex === null ||
+        !bucket ||
+        bucket.positions.length === 0
+      ) {
         activeTileIndex = null;
         bucket = null;
         return;
@@ -866,7 +868,9 @@ export class SwfPlayer {
       bucket = null;
     };
 
-    const appendSlice = (slice: ReturnType<typeof sliceQuadAcrossTiles>[number]): void => {
+    const appendSlice = (
+      slice: ReturnType<typeof sliceQuadAcrossTiles>[number],
+    ): void => {
       const tileEntry = layout.tiles[slice.tileIndex];
       if (!tileEntry) return;
 

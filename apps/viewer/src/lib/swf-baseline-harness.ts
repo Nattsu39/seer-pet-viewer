@@ -1,6 +1,18 @@
 import type { SwfClipData } from "@seer/swf-bundle";
 import { getEffectiveSwfMaxTextureSize } from "../lib/swf-texture";
 import type { SwfPlayer } from "@seer/swf-renderer";
+
+/** Harness 所需的播放器公开 API（避免 Vue UnwrapRef 剥离 class 私有字段） */
+type SwfBaselinePlayer = Pick<
+  SwfPlayer,
+  | "getAtlasTileDebugInfo"
+  | "setSequence"
+  | "pause"
+  | "gotoFrame"
+  | "fitToView"
+  | "getCanvas"
+  | "captureFrames"
+>;
 import {
   detectTextureMisalignment,
   type RgbaImage,
@@ -67,14 +79,17 @@ export interface SwfBaselineHarness {
     referenceUrl: string,
     options?: TextureAlignmentOptions,
   ): Promise<TextureAlignmentReport & { referenceUrl: string }>;
+  captureExportSequence(captureOptions: {
+    sequence: string;
+    scale?: number;
+    background?: number | "transparent";
+    renderFxLayers?: boolean;
+  }): Promise<SwfBaselineExportFrame[]>;
 }
 
 async function sha256Hex(data: ArrayBuffer | Uint8Array): Promise<string> {
-  const buffer =
-    data instanceof ArrayBuffer
-      ? data
-      : data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
-  const digest = await crypto.subtle.digest("SHA-256", buffer);
+  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+  const digest = await crypto.subtle.digest("SHA-256", new Uint8Array(bytes));
   return [...new Uint8Array(digest)]
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
@@ -116,7 +131,7 @@ async function loadReferencePng(url: string): Promise<RgbaImage> {
   };
 }
 
-async function capturePreviewPixels(player: SwfPlayer): Promise<RgbaImage> {
+async function capturePreviewPixels(player: SwfBaselinePlayer): Promise<RgbaImage> {
   const canvas = player.getCanvas();
   const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((value) => {
@@ -141,7 +156,7 @@ async function capturePreviewPixels(player: SwfPlayer): Promise<RgbaImage> {
 }
 
 export function installSwfBaselineHarness(options: {
-  getPlayer: () => SwfPlayer | null;
+  getPlayer: () => SwfBaselinePlayer | null;
   getClip: () => SwfClipData | null;
 }): void {
   if (!import.meta.env.DEV) return;
