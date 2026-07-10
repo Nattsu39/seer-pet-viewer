@@ -623,6 +623,9 @@ export class SwfPlayer {
   }
 
   private clearMeshes(): void {
+    for (const mesh of this.meshes) {
+      mesh.geometry?.destroy(true);
+    }
     for (const child of [...this.stage.children]) {
       child.destroy({ children: true });
     }
@@ -986,7 +989,14 @@ export class SwfPlayer {
         aPosition: { buffer: new Float32Array(positions), size: 2 },
         aUV: { buffer: new Float32Array(uvs), size: 2 },
         aMulColor: { buffer: new Float32Array(mulColors), size: 4 },
-        aAddColor: { buffer: new Float32Array(addColors), size: 4 },
+        ...(!mask
+          ? {
+              aAddColor: {
+                buffer: new Float32Array(addColors),
+                size: 4,
+              },
+            }
+          : {}),
         ...(grab
           ? {
               aGrabMode: {
