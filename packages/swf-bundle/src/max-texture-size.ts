@@ -12,8 +12,7 @@ export function getMaxTextureSize(): number {
       canvas.getContext("webgl") ??
       canvas.getContext("experimental-webgl")) as WebGLRenderingContext | null;
     if (gl) {
-      const glMax = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
-      cachedMaxTextureSize = Math.min(glMax, DEFAULT_MAX_TEXTURE_SIZE);
+      cachedMaxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
       return cachedMaxTextureSize;
     }
   }
