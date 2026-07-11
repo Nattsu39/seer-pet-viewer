@@ -33,6 +33,7 @@ import {
 import {
   materialToPixiBlend,
   needsGrabPass,
+  needsPmaShaderOutput,
   needsStencilTest,
   isMaskClearer,
   isMaskWriter,
@@ -76,6 +77,7 @@ type MeshRole = "content" | "mask";
 
 type TileShaderSet = {
   normal: Shader;
+  pma: Shader;
   grab: Shader;
   mask: Shader;
 };
@@ -98,10 +100,12 @@ export class SwfPlayer {
   private meshes: Mesh<Geometry, Shader>[] = [];
   private shaders: {
     normal: Shader | null;
+    pma: Shader | null;
     grab: Shader | null;
     mask: Shader | null;
   } = {
     normal: null,
+    pma: null,
     grab: null,
     mask: null,
   };
@@ -173,6 +177,16 @@ export class SwfPlayer {
           entry.tile.width,
           entry.tile.height,
         ),
+        pma: createSwfShader(
+          entry.texture,
+          false,
+          this.tint,
+          entry.tile.width,
+          entry.tile.height,
+          false,
+          null,
+          true,
+        ),
         grab: createSwfShader(
           entry.texture,
           true,
@@ -198,6 +212,16 @@ export class SwfPlayer {
         this.tint,
         clip.atlasWidth,
         clip.atlasHeight,
+      );
+      this.shaders.pma = createSwfShader(
+        this.texture,
+        false,
+        this.tint,
+        clip.atlasWidth,
+        clip.atlasHeight,
+        false,
+        null,
+        true,
       );
       this.shaders.grab = createSwfShader(
         this.texture,
@@ -227,16 +251,18 @@ export class SwfPlayer {
     if (this.tileShaders) {
       for (const set of this.tileShaders) {
         set.normal.destroy();
+        set.pma.destroy();
         set.grab.destroy();
         set.mask.destroy();
       }
       this.tileShaders = null;
     } else {
       this.shaders.normal?.destroy();
+      this.shaders.pma?.destroy();
       this.shaders.grab?.destroy();
       this.shaders.mask?.destroy();
     }
-    this.shaders = { normal: null, grab: null, mask: null };
+    this.shaders = { normal: null, pma: null, grab: null, mask: null };
     this.clearMeshes();
     if (this.grabTexture) {
       this.grabTexture.destroy(true);
@@ -1028,7 +1054,8 @@ export class SwfPlayer {
       indexBuffer: new Uint16Array(indices),
     });
 
-    const shader = this.resolveShader(role, grab, tileIndex);
+    const pmaOutput = !mask && !grab && needsPmaShaderOutput(material);
+    const shader = this.resolveShader(role, grab, pmaOutput, tileIndex);
 
     if (!this.tileShaders) {
       updateSwfShaderResources(
@@ -1059,6 +1086,7 @@ export class SwfPlayer {
   private resolveShader(
     role: MeshRole,
     grab: boolean,
+    pmaOutput: boolean,
     tileIndex?: number,
   ): Shader {
     if (this.tileShaders && tileIndex !== undefined) {
@@ -1068,10 +1096,12 @@ export class SwfPlayer {
       }
       if (role === "mask") return set.mask;
       if (grab) return set.grab;
+      if (pmaOutput) return set.pma;
       return set.normal;
     }
     if (role === "mask") return this.shaders.mask!;
     if (grab) return this.shaders.grab!;
+    if (pmaOutput) return this.shaders.pma!;
     return this.shaders.normal!;
   }
 

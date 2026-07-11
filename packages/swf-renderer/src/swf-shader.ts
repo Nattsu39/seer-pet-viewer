@@ -10,7 +10,7 @@ import {
 } from "pixi.js";
 
 /** 递增以在热更新后强制重新编译 shader */
-const SHADER_CACHE_VERSION = 13;
+const SHADER_CACHE_VERSION = 14;
 let shaderCacheVersion = -1;
 
 /**
@@ -66,6 +66,12 @@ const swfAtlasTextureBitGl = {
   },
 };
 
+const swfColorFragmentMain = /* glsl */ `
+      outColor = outColor * vMulColor * uTint;
+      float swfA = outColor.a;
+      outColor = outColor + step(0.01, swfA) * vAddColor;
+`;
+
 const swfColorBitGl = {
   name: "swf-color-bit",
   vertex: {
@@ -86,10 +92,18 @@ const swfColorBitGl = {
       in vec4 vAddColor;
       uniform vec4 uTint;
     `,
+    main: swfColorFragmentMain,
+  },
+};
+
+const swfColorPmaBitGl = {
+  name: "swf-color-pma-bit",
+  vertex: swfColorBitGl.vertex,
+  fragment: {
+    header: swfColorBitGl.fragment.header,
     main: /* glsl */ `
-      outColor = outColor * vMulColor * uTint;
-      float swfA = outColor.a;
-      outColor = outColor + step(0.01, swfA) * vAddColor;
+      ${swfColorFragmentMain}
+      outColor.rgb *= outColor.a;
     `,
   },
 };
@@ -162,18 +176,24 @@ const swfMaskBitGl = {
 };
 
 let glProgramNormal: GlProgram | null = null;
+let glProgramPma: GlProgram | null = null;
 let glProgramGrab: GlProgram | null = null;
 let glProgramMask: GlProgram | null = null;
 
 function invalidateShaderCacheIfNeeded(): void {
   if (shaderCacheVersion === SHADER_CACHE_VERSION) return;
   glProgramNormal = null;
+  glProgramPma = null;
   glProgramGrab = null;
   glProgramMask = null;
   shaderCacheVersion = SHADER_CACHE_VERSION;
 }
 
-function getGlProgram(grab: boolean, mask = false): GlProgram {
+function getGlProgram(
+  grab: boolean,
+  mask = false,
+  pmaOutput = false,
+): GlProgram {
   invalidateShaderCacheIfNeeded();
   if (mask) {
     glProgramMask ??= compileHighShaderGlProgram({
@@ -195,6 +215,18 @@ function getGlProgram(grab: boolean, mask = false): GlProgram {
     });
     return glProgramGrab;
   }
+  if (pmaOutput) {
+    glProgramPma ??= compileHighShaderGlProgram({
+      name: "swf-shader-atlas-pma",
+      bits: [
+        localUniformBitGl,
+        swfAtlasTextureBitGl,
+        swfColorPmaBitGl,
+        roundPixelsBitGl,
+      ],
+    });
+    return glProgramPma;
+  }
   glProgramNormal ??= compileHighShaderGlProgram({
     name: "swf-shader-atlas",
     bits: [localUniformBitGl, swfAtlasTextureBitGl, swfColorBitGl, roundPixelsBitGl],
@@ -210,13 +242,14 @@ export function createSwfShader(
   atlasHeight: number,
   mask = false,
   grabSource: Texture["source"] | null = null,
+  pmaOutput = false,
 ): Shader {
   const swfUniforms = new UniformGroup({
     uTint: { value: new Float32Array(tint), type: "vec4<f32>" },
   });
 
   return new Shader({
-    glProgram: getGlProgram(grab, mask),
+    glProgram: getGlProgram(grab, mask, pmaOutput),
     resources: {
       localUniforms: new UniformGroup({
         uTransformMatrix: { value: new Matrix(), type: "mat3x3<f32>" },

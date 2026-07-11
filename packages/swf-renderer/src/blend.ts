@@ -1,4 +1,15 @@
-import type { SwfMaterialState } from "@seer/swf-bundle";
+import type { SwfBlendMode, SwfMaterialState } from "@seer/swf-bundle";
+
+/** 与 pet_export.swf_shade_vec 一致：这些混合在 Unity 侧假定 PMA 片元色 */
+const PMA_OUTPUT_BLEND_MODES: ReadonlySet<SwfBlendMode> = new Set([
+  "screen",
+  "lighten",
+  "multiply",
+]);
+
+export function needsPmaShaderOutput(material: SwfMaterialState): boolean {
+  return PMA_OUTPUT_BLEND_MODES.has(material.blendMode);
+}
 
 export type PixiBlendMode =
   | "normal"
