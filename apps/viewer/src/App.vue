@@ -11,7 +11,12 @@ import {
   parsePetDeepLink,
 } from "./lib/pet-deep-link";
 import type { PetAnimIndex, PetAnimIndexEntry } from "./lib/pet-anim-index";
-import { isRemoteBundleEnabled, isRemoteBundleAllowed } from "./lib/remote-bundle";
+import {
+  isRemoteBundleEnabled,
+  canNamedRemoteBundleDownload,
+  newseerBundleDownloadUrl,
+  remoteBundleDownloadFilename,
+} from "./lib/remote-bundle";
 
 const PetViewer = defineAsyncComponent(
   () => import("./components/PetViewer.vue"),
@@ -45,7 +50,7 @@ const {
   retryRemoteLoad,
   dismissError,
   dismissWarnings,
-  downloadRemoteBundle,
+  downloadNamedRemoteBundle,
   loadSwfClipDir,
   loadSpineClipDir,
   loadMaterialBundle,
@@ -134,6 +139,28 @@ function onMaterialInput(e: Event) {
 function onRemoteSelect(entry: PetAnimIndexEntry, index: PetAnimIndex) {
   void loadBundleFromRemote(entry, index.sharedBundles);
 }
+
+function remoteFailureDownloadUrl(): string | null {
+  const entry = remoteLoadContext.value?.entry;
+  if (!entry) return null;
+  try {
+    return newseerBundleDownloadUrl(entry);
+  } catch {
+    return null;
+  }
+}
+
+function remoteFailureDownloadFilename(): string | null {
+  const entry = remoteLoadContext.value?.entry;
+  if (!entry) return null;
+  return remoteBundleDownloadFilename(entry);
+}
+
+function canNamedRemoteFailureDownload(): boolean {
+  const entry = remoteLoadContext.value?.entry;
+  if (!entry) return false;
+  return canNamedRemoteBundleDownload(entry);
+}
 </script>
 
 <template>
@@ -168,10 +195,12 @@ function onRemoteSelect(entry: PetAnimIndexEntry, index: PetAnimIndex) {
           :error="error"
           :entry="remoteLoadContext?.entry ?? null"
           :can-retry="!!remoteLoadContext"
-          :can-download="!!remoteLoadContext && remoteLoadContext.entry && isRemoteBundleAllowed(remoteLoadContext.entry)"
+          :can-named-download="canNamedRemoteFailureDownload()"
+          :download-filename="remoteFailureDownloadFilename()"
+          :official-download-url="remoteFailureDownloadUrl()"
           :downloading="downloadingBundle"
           @retry="retryRemoteLoad"
-          @download="downloadRemoteBundle"
+          @named-download="downloadNamedRemoteBundle"
           @dismiss="dismissError"
         />
         <PetPicker

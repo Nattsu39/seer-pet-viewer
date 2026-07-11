@@ -24,8 +24,10 @@ import type {
 import { loadPetAnimIndex } from "../lib/pet-anim-index";
 import {
   fetchBundleFromIndex,
+  fetchBundleFromNewseerProxy,
   isRemoteBundleAllowed,
   isRemoteBundleEnabled,
+  REMOTE_BUNDLE_MAX_BYTES,
   remoteBundleBlockedMessage,
   remoteBundleDownloadFilename,
   type DownloadProgress,
@@ -283,18 +285,24 @@ export function usePetLoader(options?: {
     warningsVisible.value = false;
   }
 
-  async function downloadRemoteBundle() {
+  async function downloadNamedRemoteBundle() {
     const ctx = remoteLoadContext.value;
-    if (!ctx || !isRemoteBundleAllowed(ctx.entry)) return;
+    if (!ctx) return;
 
+    const entry = ctx.entry;
     downloadingBundle.value = true;
     clearDownloadProgress();
     try {
-      const buffer = await fetchBundleFromIndex(ctx.entry, {
-        onProgress: reportDownloadProgress,
-      });
+      const buffer =
+        entry.fileSize < REMOTE_BUNDLE_MAX_BYTES
+          ? await fetchBundleFromNewseerProxy(entry, {
+              onProgress: reportDownloadProgress,
+            })
+          : await fetchBundleFromIndex(entry, {
+              onProgress: reportDownloadProgress,
+            });
       const blob = new Blob([buffer], { type: "application/octet-stream" });
-      downloadBlob(blob, remoteBundleDownloadFilename(ctx.entry));
+      downloadBlob(blob, remoteBundleDownloadFilename(entry));
     } catch (e) {
       error.value = formatRemoteLoadError(e);
     } finally {
@@ -428,7 +436,7 @@ export function usePetLoader(options?: {
     retryRemoteLoad,
     dismissError,
     dismissWarnings,
-    downloadRemoteBundle,
+    downloadNamedRemoteBundle,
     loadSwfClipDir,
     loadSpineClipDir,
     loadMaterialBundle: loadMaterialBundleFile,

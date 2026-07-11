@@ -14,13 +14,15 @@ const props = defineProps<{
   error?: string | null;
   entry?: PetAnimIndexEntry | null;
   canRetry?: boolean;
-  canDownload?: boolean;
+  canNamedDownload?: boolean;
+  downloadFilename?: string | null;
+  officialDownloadUrl?: string | null;
   downloading?: boolean;
 }>();
 
 const emit = defineEmits<{
   retry: [];
-  download: [];
+  namedDownload: [];
   dismiss: [];
 }>();
 
@@ -39,6 +41,17 @@ const progressLabel = computed(() => {
     return percent !== null ? `${loaded} / ${total}（${percent}%）` : `${loaded} / ${total}`;
   }
   return `已下载 ${loaded}`;
+});
+
+const showOfficialFilenameTip = computed(
+  () => !!props.officialDownloadUrl && !props.canNamedDownload,
+);
+
+/** 官方直链下载后，浏览器通常以 URL 中的 hash 作为文件名 */
+const officialSavedFilename = computed(() => {
+  const hash = props.entry?.path?.trim();
+  if (!hash) return null;
+  return hash;
 });
 </script>
 
@@ -95,9 +108,33 @@ const progressLabel = computed(() => {
     <p v-if="canRetry" class="remote-notice-hint">
       可点击重试，或通过顶部菜单导入本地 bundle、<code>.swfclip</code> / <code>.spineclip</code> 目录。
     </p>
-    <p v-else class="remote-notice-hint">
+    <p v-else-if="officialDownloadUrl && !showOfficialFilenameTip" class="remote-notice-hint">
+      可从
+      <a :href="officialDownloadUrl" target="_blank" rel="noopener noreferrer">newseer.61.com 官方源</a>
+      下载 bundle 后手动导入。
+    </p>
+    <p v-else-if="!showOfficialFilenameTip" class="remote-notice-hint">
       请检查文件后重新导入，或通过顶部菜单选择其他资源。
     </p>
+
+    <div
+      v-if="showOfficialFilenameTip"
+      class="official-download-tip"
+      role="note"
+      aria-label="官方源下载文件名提示"
+    >
+      <p class="official-download-tip-title">官方源下载文件名提示</p>
+      <p v-if="officialSavedFilename" class="official-download-tip-row">
+        <span class="official-download-tip-label">下载后文件名</span>
+        <code class="official-download-tip-filename">{{ officialSavedFilename }}</code>
+      </p>
+      <p class="official-download-tip-desc">
+        请在浏览器的「下载」文件夹或文件管理器中查找
+        <code v-if="officialSavedFilename">{{ officialSavedFilename }}</code>
+        <template v-else>上述 hash 文件</template>（无扩展名或显示为未知类型均属正常）。
+      </p>
+    </div>
+
     <div class="remote-notice-actions">
       <button
         v-if="canRetry"
@@ -109,13 +146,22 @@ const progressLabel = computed(() => {
         重试
       </button>
       <button
-        v-if="canDownload"
+        v-if="canNamedDownload && downloadFilename"
         type="button"
         :disabled="downloading"
-        @click="emit('download')"
+        @click="emit('namedDownload')"
       >
-        {{ downloading ? "下载中…" : "下载 Bundle" }}
+        {{ downloading ? "下载中…" : `下载 ${downloadFilename}` }}
       </button>
+      <a
+        v-if="officialDownloadUrl && !canNamedDownload"
+        class="remote-download-link"
+        :href="officialDownloadUrl"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        官方源下载
+      </a>
       <button type="button" :disabled="downloading" @click="emit('dismiss')">
         关闭
       </button>
@@ -259,6 +305,72 @@ const progressLabel = computed(() => {
 
 .remote-notice-actions button {
   min-height: 36px;
+}
+
+.remote-download-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 0.9rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.remote-download-link:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.remote-notice-hint a {
+  color: var(--accent);
+}
+
+.official-download-tip {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--warning-border);
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.official-download-tip-title {
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+
+.official-download-tip-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+}
+
+.official-download-tip-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.official-download-tip-filename {
+  font-size: 0.8rem;
+  word-break: break-all;
+}
+
+.official-download-tip-desc {
+  margin: 4px 0 0;
+}
+
+.official-download-tip code {
+  font-size: 0.9em;
 }
 
 @media (max-width: 768px) {

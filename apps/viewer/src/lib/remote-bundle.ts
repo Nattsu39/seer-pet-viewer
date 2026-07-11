@@ -1,5 +1,8 @@
 export const REMOTE_BUNDLE_MAX_BYTES = 5 * 1024 * 1024;
 
+export const NEWSEER_BUNDLE_BASE_URL =
+  "https://newseer.61.com/Assets/StandaloneWindows64/PetAnimPackage";
+
 export const DEFAULT_LARGE_BUNDLE_CDN_PREFIX =
   "https://cdn.jsdelivr.net/gh/SeerAPI/seer-unity-assets-pet_anim_part@main/newseer/assetbundles/PetAnimPackage";
 
@@ -136,6 +139,47 @@ export async function fetchBundleFromIndex(
 
 export function remoteBundleDownloadFilename(item: RemoteBundleRef): string {
   return item.name.endsWith(".bundle") ? item.name : `${item.name}.bundle`;
+}
+
+/** 手动下载失败资源时使用的 newseer.61.com 官方源链接（不经代理/CDN） */
+export function newseerBundleUrl(path: string): string {
+  const hash = path.trim();
+  if (!/^[a-f0-9]{32}$/.test(hash)) {
+    throw new Error(`无效的 bundle hash: ${path}`);
+  }
+  return `${NEWSEER_BUNDLE_BASE_URL}/${hash}`;
+}
+
+export function newseerBundleDownloadUrl(item: RemoteBundleRef): string {
+  return newseerBundleUrl(item.path);
+}
+
+/** 失败后的命名下载是否可走同域代理/CDN（fetch 不受跨域限制） */
+export function canNamedRemoteBundleDownload(item: RemoteBundleRef): boolean {
+  if (item.fileSize < REMOTE_BUNDLE_MAX_BYTES && getBundleProxyPrefix() !== null) {
+    return true;
+  }
+  return isRemoteBundleAllowed(item);
+}
+
+/**
+ * 经同域代理从 newseer.61.com 上游拉取（仅 <5 MB）。
+ * 大文件请使用 newseerBundleDownloadUrl 官方直链。
+ */
+export async function fetchBundleFromNewseerProxy(
+  item: RemoteBundleRef,
+  options?: FetchBundleOptions,
+): Promise<ArrayBuffer> {
+  if (item.fileSize >= REMOTE_BUNDLE_MAX_BYTES) {
+    const mb = (item.fileSize / (1024 * 1024)).toFixed(1);
+    throw new Error(
+      `该资源约 ${mb} MB，超出同域代理限制，请使用官方源链接下载`,
+    );
+  }
+  return fetchBundleFromUrl(bundleProxyUrl(item.path), {
+    ...options,
+    expectedSize: item.fileSize > 0 ? item.fileSize : undefined,
+  });
 }
 
 async function fetchBundleFromUrl(
