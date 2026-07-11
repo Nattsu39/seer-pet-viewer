@@ -1,4 +1,4 @@
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import type { SwfClipData } from "@seer/swf-bundle";
 import {
   parseBundleInWorker,
@@ -61,9 +61,14 @@ export function usePetLoader() {
   const pet = ref<PetClip | null>(null);
   const parseMs = ref(0);
   const warnings = ref<string[]>([]);
+  const warningsVisible = ref(true);
   const materialCount = ref(0);
   const materialResolver = new MaterialResolver();
   const downloadingBundle = ref(false);
+
+  watch(warnings, () => {
+    warningsVisible.value = true;
+  });
 
   let lastSwfBuffer: ArrayBuffer | null = null;
   let lastSwfFileName = "";
@@ -253,6 +258,10 @@ export function usePetLoader() {
     remoteLoadContext.value = null;
   }
 
+  function dismissWarnings() {
+    warningsVisible.value = false;
+  }
+
   async function downloadRemoteBundle() {
     const ctx = remoteLoadContext.value;
     if (!ctx || !isRemoteBundleAllowed(ctx.entry)) return;
@@ -373,6 +382,7 @@ export function usePetLoader() {
     loadingMessage.value = null;
     clearDownloadProgress();
     warnings.value = [];
+    warningsVisible.value = true;
     parseMs.value = 0;
     lastSwfBuffer = null;
     lastSwfFileName = "";
@@ -390,12 +400,14 @@ export function usePetLoader() {
     pet,
     parseMs,
     warnings,
+    warningsVisible,
     materialCount,
     sharedMaterialBundleName: SHARED_SWF_MATERIAL_BUNDLE_NAME,
     loadBundleFile,
     loadBundleFromRemote,
     retryRemoteLoad,
     dismissError,
+    dismissWarnings,
     downloadRemoteBundle,
     loadSwfClipDir,
     loadSpineClipDir,

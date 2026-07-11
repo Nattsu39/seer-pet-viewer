@@ -27,12 +27,14 @@ const {
   pet,
   parseMs,
   warnings,
+  warningsVisible,
   materialCount,
   sharedMaterialBundleName,
   loadBundleFile,
   loadBundleFromRemote,
   retryRemoteLoad,
   dismissError,
+  dismissWarnings,
   downloadRemoteBundle,
   loadSwfClipDir,
   loadSpineClipDir,
@@ -225,8 +227,18 @@ function onRemoteSelect(entry: PetAnimIndexEntry, index: PetAnimIndex) {
         <span>渲染 {{ fps }} fps</span>
       </div>
 
-      <div v-if="warnings.length" class="warnings">
-        <p v-for="(w, i) in warnings" :key="i">{{ w }}</p>
+      <div v-if="warnings.length && warningsVisible" class="warnings">
+        <div class="warnings-content">
+          <p v-for="(w, i) in warnings" :key="i">{{ w }}</p>
+        </div>
+        <button
+          type="button"
+          class="warnings-close"
+          aria-label="关闭警告"
+          @click="dismissWarnings"
+        >
+          ×
+        </button>
       </div>
 
       <Suspense>
@@ -341,15 +353,45 @@ function onRemoteSelect(entry: PetAnimIndexEntry, index: PetAnimIndex) {
 }
 
 .warnings {
-  padding: 8px 20px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px 8px 20px;
   background: var(--warning-bg);
   border-bottom: 1px solid var(--warning-border);
   font-size: 0.82rem;
   color: var(--warning-text);
+  flex-shrink: 0;
 }
 
-.warnings p {
+.warnings-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.warnings-content p {
   margin: 2px 0;
+}
+
+.warnings-close {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 1.2rem;
+  line-height: 1;
+  border-radius: 6px;
+  border: 1px solid var(--warning-border);
+  background: transparent;
+  color: var(--warning-text);
+  cursor: pointer;
+}
+
+.warnings-close:hover {
+  background: color-mix(in srgb, var(--warning-border) 40%, transparent);
 }
 
 .viewer-shell {
