@@ -134,6 +134,10 @@ export async function fetchBundleFromIndex(
   });
 }
 
+export function remoteBundleDownloadFilename(item: RemoteBundleRef): string {
+  return item.name.endsWith(".bundle") ? item.name : `${item.name}.bundle`;
+}
+
 async function fetchBundleFromUrl(
   url: string,
   options?: FetchBundleOptions,

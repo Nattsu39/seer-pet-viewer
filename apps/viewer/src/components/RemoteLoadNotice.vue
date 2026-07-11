@@ -14,10 +14,13 @@ const props = defineProps<{
   error?: string | null;
   entry?: PetAnimIndexEntry | null;
   canRetry?: boolean;
+  canDownload?: boolean;
+  downloading?: boolean;
 }>();
 
 const emit = defineEmits<{
   retry: [];
+  download: [];
   dismiss: [];
 }>();
 
@@ -100,11 +103,22 @@ const progressLabel = computed(() => {
         v-if="canRetry"
         type="button"
         class="primary"
+        :disabled="downloading"
         @click="emit('retry')"
       >
         重试
       </button>
-      <button type="button" @click="emit('dismiss')">关闭</button>
+      <button
+        v-if="canDownload"
+        type="button"
+        :disabled="downloading"
+        @click="emit('download')"
+      >
+        {{ downloading ? "下载中…" : "下载 Bundle" }}
+      </button>
+      <button type="button" :disabled="downloading" @click="emit('dismiss')">
+        关闭
+      </button>
     </div>
   </div>
 </template>

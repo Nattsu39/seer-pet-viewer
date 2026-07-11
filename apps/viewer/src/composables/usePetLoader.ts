@@ -16,11 +16,18 @@ import {
   terminateSpineParserWorker,
   type SpineClipJson,
 } from "@seer/spine-bundle";
+import { downloadBlob } from "@seer/anim-export";
 import type {
   PetAnimIndexEntry,
   PetAnimSharedBundle,
 } from "../lib/pet-anim-index";
-import { fetchBundleFromIndex, isRemoteBundleAllowed, remoteBundleBlockedMessage, type DownloadProgress } from "../lib/remote-bundle";
+import {
+  fetchBundleFromIndex,
+  isRemoteBundleAllowed,
+  remoteBundleBlockedMessage,
+  remoteBundleDownloadFilename,
+  type DownloadProgress,
+} from "../lib/remote-bundle";
 import { withRuntimeAtlasTileWarning } from "../lib/swf-texture";
 
 export interface RemoteLoadContext {
@@ -56,6 +63,7 @@ export function usePetLoader() {
   const warnings = ref<string[]>([]);
   const materialCount = ref(0);
   const materialResolver = new MaterialResolver();
+  const downloadingBundle = ref(false);
 
   let lastSwfBuffer: ArrayBuffer | null = null;
   let lastSwfFileName = "";
@@ -245,6 +253,26 @@ export function usePetLoader() {
     remoteLoadContext.value = null;
   }
 
+  async function downloadRemoteBundle() {
+    const ctx = remoteLoadContext.value;
+    if (!ctx || !isRemoteBundleAllowed(ctx.entry)) return;
+
+    downloadingBundle.value = true;
+    clearDownloadProgress();
+    try {
+      const buffer = await fetchBundleFromIndex(ctx.entry, {
+        onProgress: reportDownloadProgress,
+      });
+      const blob = new Blob([buffer], { type: "application/octet-stream" });
+      downloadBlob(blob, remoteBundleDownloadFilename(ctx.entry));
+    } catch (e) {
+      error.value = formatRemoteLoadError(e);
+    } finally {
+      downloadingBundle.value = false;
+      clearDownloadProgress();
+    }
+  }
+
   async function loadSwfClipDir(files: FileList | File[]) {
     loading.value = true;
     error.value = null;
@@ -357,6 +385,7 @@ export function usePetLoader() {
     error,
     loadingMessage,
     downloadProgress,
+    downloadingBundle,
     remoteLoadContext,
     pet,
     parseMs,
@@ -367,6 +396,7 @@ export function usePetLoader() {
     loadBundleFromRemote,
     retryRemoteLoad,
     dismissError,
+    downloadRemoteBundle,
     loadSwfClipDir,
     loadSpineClipDir,
     loadMaterialBundle: loadMaterialBundleFile,

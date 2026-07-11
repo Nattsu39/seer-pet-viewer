@@ -11,7 +11,7 @@ import {
   parsePetDeepLink,
 } from "./lib/pet-deep-link";
 import type { PetAnimIndex, PetAnimIndexEntry } from "./lib/pet-anim-index";
-import { isRemoteBundleEnabled } from "./lib/remote-bundle";
+import { isRemoteBundleEnabled, isRemoteBundleAllowed } from "./lib/remote-bundle";
 
 const PetViewer = defineAsyncComponent(
   () => import("./components/PetViewer.vue"),
@@ -22,6 +22,7 @@ const {
   error,
   loadingMessage,
   downloadProgress,
+  downloadingBundle,
   remoteLoadContext,
   pet,
   parseMs,
@@ -32,6 +33,7 @@ const {
   loadBundleFromRemote,
   retryRemoteLoad,
   dismissError,
+  downloadRemoteBundle,
   loadSwfClipDir,
   loadSpineClipDir,
   loadMaterialBundle,
@@ -161,7 +163,10 @@ function onRemoteSelect(entry: PetAnimIndexEntry, index: PetAnimIndex) {
           :error="error"
           :entry="remoteLoadContext?.entry ?? null"
           :can-retry="!!remoteLoadContext"
+          :can-download="!!remoteLoadContext && remoteLoadContext.entry && isRemoteBundleAllowed(remoteLoadContext.entry)"
+          :downloading="downloadingBundle"
           @retry="retryRemoteLoad"
+          @download="downloadRemoteBundle"
           @dismiss="dismissError"
         />
         <PetPicker
