@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import type { ExportFormat } from "@seer/anim-export";
 import type {
   ExportBackgroundMode,
   ExportScale,
 } from "../composables/useAnimationExport";
+import { useVisualViewportBottomInset } from "../composables/useVisualViewportBottomInset";
 
 defineProps<{
   open: boolean;
@@ -22,6 +24,14 @@ const emit = defineEmits<{
   "update:exportScale": [value: ExportScale];
   "update:exportBackground": [value: ExportBackgroundMode];
 }>();
+
+const { bottomInset } = useVisualViewportBottomInset();
+const modalStyle = computed(
+  () =>
+    ({
+      "--vv-bottom-inset": `${bottomInset.value}px`,
+    }) as Record<string, string>,
+);
 </script>
 
 <template>
@@ -36,6 +46,7 @@ const emit = defineEmits<{
         role="dialog"
         aria-modal="true"
         aria-labelledby="export-modal-title"
+        :style="modalStyle"
         @click.stop
       >
         <header class="export-modal-header">
@@ -146,7 +157,10 @@ const emit = defineEmits<{
   background: var(--panel);
   display: flex;
   flex-direction: column;
-  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  padding-bottom: max(
+    20px,
+    calc(env(safe-area-inset-bottom, 0px) + var(--vv-bottom-inset, 0px) + 12px)
+  );
 }
 
 .export-modal-header {

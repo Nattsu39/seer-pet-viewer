@@ -17,6 +17,7 @@ import {
   useViewerSettings,
 } from "../composables/useViewerSettings";
 import { useAnimationExport } from "../composables/useAnimationExport";
+import { useVisualViewportBottomInset } from "../composables/useVisualViewportBottomInset";
 import { getAnimationLabel } from "../lib/animation-labels";
 import { installSwfBaselineHarness } from "../lib/swf-baseline-harness";
 
@@ -58,6 +59,14 @@ const controlsCollapsed = ref(false);
 const showExportModal = ref(false);
 const { openOverlay: openExportModal, closeOverlay: closeExportModal } =
   useHistoryOverlay(showExportModal, "export-modal");
+const { bottomInset } = useVisualViewportBottomInset();
+
+const mobileControlsStyle = computed(() => {
+  if (!props.isMobile) return undefined;
+  return {
+    "--vv-bottom-inset": `${bottomInset.value}px`,
+  } as Record<string, string>;
+});
 
 const sequenceOptions = computed(() => {
   if (props.pet.type === "swf") {
@@ -376,6 +385,7 @@ defineExpose({ fitView });
     <aside
       class="controls"
       :class="{ collapsed: isMobile && controlsCollapsed }"
+      :style="mobileControlsStyle"
     >
       <div v-if="isMobile && controlsCollapsed" class="controls-collapsed-bar">
         <div class="controls-collapsed-info">
@@ -764,13 +774,19 @@ defineExpose({ fitView });
 .viewer.mobile .controls {
   flex-shrink: 0;
   max-height: min(46dvh, calc(100svh - 140px));
-  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  padding-bottom: max(
+    20px,
+    calc(env(safe-area-inset-bottom, 0px) + var(--vv-bottom-inset, 0px) + 12px)
+  );
 }
 
 .viewer.mobile .controls.collapsed {
   max-height: none;
   padding: 12px 16px;
-  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  padding-bottom: max(
+    20px,
+    calc(env(safe-area-inset-bottom, 0px) + var(--vv-bottom-inset, 0px) + 12px)
+  );
   overflow: visible;
 }
 
