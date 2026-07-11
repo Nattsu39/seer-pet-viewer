@@ -23,6 +23,7 @@ const {
   toolbarLabel,
   nextToolbarLabel,
   isMobile,
+  autoImportSharedMaterials,
 } = useViewerSettings();
 
 const showInfoMenu = ref(false);
@@ -162,6 +163,10 @@ onUnmounted(() => {
             @change="emit('materialInput', $event)"
           />
         </label>
+        <label class="import-option">
+          <input v-model="autoImportSharedMaterials" type="checkbox" />
+          自动导入共享材质
+        </label>
         <button v-if="petLoaded" class="header-btn" @click="emit('reset')">
           关闭
         </button>
@@ -263,6 +268,10 @@ onUnmounted(() => {
               closeMobileMenu();
             "
           />
+        </label>
+        <label class="mobile-menu-option">
+          <input v-model="autoImportSharedMaterials" type="checkbox" />
+          自动导入共享材质
         </label>
       </div>
     </div>
@@ -467,6 +476,26 @@ onUnmounted(() => {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
+}
+
+.import-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.mobile-menu-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  font-size: 0.88rem;
+  color: var(--text);
+  cursor: pointer;
 }
 
 @media (max-width: 768px) {

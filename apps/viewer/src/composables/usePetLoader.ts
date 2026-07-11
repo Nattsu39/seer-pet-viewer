@@ -21,9 +21,11 @@ import type {
   PetAnimIndexEntry,
   PetAnimSharedBundle,
 } from "../lib/pet-anim-index";
+import { loadPetAnimIndex } from "../lib/pet-anim-index";
 import {
   fetchBundleFromIndex,
   isRemoteBundleAllowed,
+  isRemoteBundleEnabled,
   remoteBundleBlockedMessage,
   remoteBundleDownloadFilename,
   type DownloadProgress,
@@ -52,7 +54,9 @@ const SHARED_MATERIAL_BASE_NAME = SHARED_SWF_MATERIAL_BUNDLE_NAME.replace(
   "",
 );
 
-export function usePetLoader() {
+export function usePetLoader(options?: {
+  autoImportSharedMaterials?: () => boolean;
+}) {
   const loading = ref(false);
   const error = ref<string | null>(null);
   const loadingMessage = ref<string | null>(null);
@@ -130,15 +134,32 @@ export function usePetLoader() {
     }
   }
 
+  async function tryAutoImportSharedMaterials() {
+    if (!options?.autoImportSharedMaterials?.()) return;
+    if (!isRemoteBundleEnabled()) return;
+    if (materialCount.value > 0 || sharedMaterialRemoteLoaded) return;
+
+    const index = await loadPetAnimIndex().catch(() => null);
+    if (!index) return;
+
+    loadingMessage.value = "正在下载 SWF 共享材质…";
+    await ensureSharedMaterialLoaded(index.sharedBundles);
+    clearDownloadProgress();
+  }
+
   async function loadBundleFile(file: File) {
     loading.value = true;
     error.value = null;
     remoteLoadContext.value = null;
     warnings.value = [];
     const t0 = performance.now();
-    loadingMessage.value = `正在解析 ${file.name}…`;
     try {
       const buffer = await file.arrayBuffer();
+      const kind = await detectBundleKind(buffer);
+      if (kind === "swf") {
+        await tryAutoImportSharedMaterials();
+      }
+      loadingMessage.value = `正在解析 ${file.name}…`;
       await parseBundleBuffer(buffer, file.name);
       parseMs.value = Math.round(performance.now() - t0);
     } catch (e) {
@@ -289,6 +310,7 @@ export function usePetLoader() {
     lastSwfFileName = "";
     const t0 = performance.now();
     try {
+      await tryAutoImportSharedMaterials();
       const list = Array.from(files);
       const metaFile = list.find((f) => f.name === "meta.json");
       const atlasFile = list.find((f) => f.name === "atlas.png");
@@ -298,17 +320,15 @@ export function usePetLoader() {
       const meta = JSON.parse(await metaFile.text()) as SwfClipJson;
       const data = await loadSwfClipPackage(meta, atlasFile);
       pet.value = { type: "swf", clip: data };
-      warnings.value = withRuntimeAtlasTileWarning(
-        data.materialWarnings,
-        data.atlasWidth,
-        data.atlasHeight,
-      );
+      warnings.value = buildSwfWarnings(data.materialWarnings, data);
       parseMs.value = Math.round(performance.now() - t0);
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e);
       pet.value = null;
     } finally {
       loading.value = false;
+      loadingMessage.value = null;
+      clearDownloadProgress();
     }
   }
 

@@ -18,6 +18,16 @@ const PetViewer = defineAsyncComponent(
 );
 
 const {
+  effectiveToolbarPosition,
+  isMobile,
+  autoImportSharedMaterials,
+  cycleTheme,
+  toggleToolbarPosition,
+} = useViewerSettings();
+
+const { ensureIndexLoaded } = usePetAnimIndex();
+
+const {
   loading,
   error,
   loadingMessage,
@@ -40,16 +50,9 @@ const {
   loadSpineClipDir,
   loadMaterialBundle,
   reset,
-} = usePetLoader();
-
-const {
-  effectiveToolbarPosition,
-  isMobile,
-  cycleTheme,
-  toggleToolbarPosition,
-} = useViewerSettings();
-
-const { ensureIndexLoaded } = usePetAnimIndex();
+} = usePetLoader({
+  autoImportSharedMaterials: () => autoImportSharedMaterials.value,
+});
 
 const dragOver = ref(false);
 const fps = ref(0);

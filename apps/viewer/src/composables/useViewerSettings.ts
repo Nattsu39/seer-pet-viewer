@@ -10,6 +10,7 @@ const STORAGE_KEY = "seer-viewer-settings";
 interface ViewerSettings {
   themePreference: ThemePreference;
   toolbarPosition: ToolbarPosition;
+  autoImportSharedMaterials: boolean;
 }
 
 const THEME_CYCLE: ThemePreference[] = ["system", "light", "dark"];
@@ -29,7 +30,13 @@ const NEXT_THEME_LABELS: Record<ThemePreference, string> = {
 function readStored(): ViewerSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { themePreference: "system", toolbarPosition: "bottom" };
+    if (!raw) {
+      return {
+        themePreference: "system",
+        toolbarPosition: "bottom",
+        autoImportSharedMaterials: true,
+      };
+    }
     const parsed = JSON.parse(raw) as Partial<ViewerSettings>;
     return {
       themePreference:
@@ -40,9 +47,14 @@ function readStored(): ViewerSettings {
           : "system",
       toolbarPosition:
         parsed.toolbarPosition === "side" ? "side" : "bottom",
+      autoImportSharedMaterials: parsed.autoImportSharedMaterials !== false,
     };
   } catch {
-    return { themePreference: "system", toolbarPosition: "bottom" };
+    return {
+      themePreference: "system",
+      toolbarPosition: "bottom",
+      autoImportSharedMaterials: true,
+    };
   }
 }
 
@@ -80,6 +92,7 @@ export function getCanvasBackgroundColor(): number {
 const stored = readStored();
 const themePreference = ref<ThemePreference>(stored.themePreference);
 const toolbarPosition = ref<ToolbarPosition>(stored.toolbarPosition);
+const autoImportSharedMaterials = ref(stored.autoImportSharedMaterials);
 const resolvedTheme = ref<ResolvedTheme>(resolveTheme(stored.themePreference));
 
 applyResolvedTheme(resolvedTheme.value);
@@ -92,6 +105,7 @@ function persist(): void {
   writeStored({
     themePreference: themePreference.value,
     toolbarPosition: toolbarPosition.value,
+    autoImportSharedMaterials: autoImportSharedMaterials.value,
   });
 }
 
@@ -127,6 +141,7 @@ export function useViewerSettings() {
   });
 
   watch(toolbarPosition, persist);
+  watch(autoImportSharedMaterials, persist);
 
   const themeLabel = computed(() => THEME_LABELS[themePreference.value]);
   const nextThemeLabel = computed(
@@ -155,6 +170,7 @@ export function useViewerSettings() {
   return {
     themePreference,
     toolbarPosition,
+    autoImportSharedMaterials,
     effectiveToolbarPosition,
     isMobile,
     resolvedTheme,
