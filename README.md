@@ -51,6 +51,8 @@ pnpm build
    - `/proxy/{小文件 hash}` 返回 bundle
    - `/proxy/{≥5 MB 文件 hash}` 返回 413
 
+**缓存策略**（见根目录 [`edgeone.json`](edgeone.json)）：带 hash 的 `/assets/*` 长期缓存；`index.html`、`/`、`pet-anim-index.json` 禁用边缘与浏览器缓存，确保每次部署后用户能拿到最新入口与索引。重新部署后若仍看到旧版，可强制刷新（Ctrl+F5）。
+
 远程代理仅转发 **小于 5 MB** 的 bundle；**≥5 MB** 且已上传至 [GitHub 图床](https://github.com/SeerAPI/seer-unity-assets-pet_anim_part) 的条目会从 jsDelivr CDN 直接加载。本地调试 Edge Function 可安装 CLI 后执行 `edgeone makers dev`（可选）。
 
 ### GitHub 图床（大文件 ≥5 MB）

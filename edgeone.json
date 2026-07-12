@@ -3,5 +3,61 @@
   "nodeVersion": "22",
   "installCommand": "pnpm install",
   "buildCommand": "pnpm build:index && pnpm -r build",
-  "outputDirectory": "apps/viewer/dist"
+  "outputDirectory": "apps/viewer/dist",
+  "headers": [
+    {
+      "source": "/assets/*",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/index.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/pet-anim-index.json",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
+        }
+      ]
+    }
+  ],
+  "caches": [
+    {
+      "source": "/assets/*",
+      "cacheTtl": 31536000
+    },
+    {
+      "source": "/index.html",
+      "cacheTtl": 0
+    },
+    {
+      "source": "/",
+      "cacheTtl": 0
+    },
+    {
+      "source": "/pet-anim-index.json",
+      "cacheTtl": 0
+    }
+  ]
 }

@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
-import { createReadStream, existsSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync } from "node:fs";
 import { resolve, join, normalize } from "node:path";
 
 const unityJsRoot = resolve(
@@ -8,9 +8,33 @@ const unityJsRoot = resolve(
   "../../node_modules/@arkntools/unity-js/dist",
 );
 
+function readPetIndexVersion(): string {
+  try {
+    const raw = readFileSync(
+      resolve(__dirname, "public/pet-anim-index.json"),
+      "utf8",
+    );
+    const parsed = JSON.parse(raw) as { version?: string };
+    return parsed.version ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+const appBuildId = `${readPetIndexVersion()}-${Date.now().toString(36)}`;
+
 export default defineConfig(({ command }) => ({
   plugins: [
     vue(),
+    {
+      name: "html-cache-control",
+      transformIndexHtml(html) {
+        return html.replace(
+          "<head>",
+          '<head>\n    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />',
+        );
+      },
+    },
     {
       name: "serve-repo-examples",
       configureServer(server) {
@@ -100,6 +124,7 @@ export default defineConfig(({ command }) => ({
   },
   define: {
     global: "globalThis",
+    __APP_BUILD_ID__: JSON.stringify(appBuildId),
   },
   optimizeDeps: {
     exclude: ["@jimp/wasm-png", "wasm-webp"],

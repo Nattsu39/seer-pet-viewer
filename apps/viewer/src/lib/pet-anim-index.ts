@@ -26,10 +26,17 @@ export interface PetAnimIndex {
 
 let cachedIndex: Promise<PetAnimIndex> | null = null;
 
+export function resetPetAnimIndexCache(): void {
+  cachedIndex = null;
+}
+
 async function fetchPetAnimIndex(): Promise<PetAnimIndex> {
   const base = import.meta.env.BASE_URL;
-  const url = `${base}pet-anim-index.json`.replace(/\/+/g, "/");
-  const res = await fetch(url);
+  const url = `${base}pet-anim-index.json?v=${encodeURIComponent(__APP_BUILD_ID__)}`.replace(
+    /\/+/g,
+    "/",
+  );
+  const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) {
     throw new Error(`无法加载资源索引: ${res.status}`);
   }

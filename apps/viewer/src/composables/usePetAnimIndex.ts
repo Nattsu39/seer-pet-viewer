@@ -1,6 +1,6 @@
 import { onMounted, shallowRef } from "vue";
 import type { PetAnimIndex } from "../lib/pet-anim-index";
-import { loadPetAnimIndex } from "../lib/pet-anim-index";
+import { loadPetAnimIndex, resetPetAnimIndexCache } from "../lib/pet-anim-index";
 import { isRemoteBundleEnabled } from "../lib/remote-bundle";
 
 const index = shallowRef<PetAnimIndex | null>(null);
@@ -37,7 +37,9 @@ function startLoad(): void {
 async function retryIndexLoad(): Promise<PetAnimIndex | null> {
   if (!isRemoteBundleEnabled()) return null;
   indexError.value = null;
+  index.value = null;
   loadPromise = null;
+  resetPetAnimIndexCache();
   return ensureIndexLoaded();
 }
 

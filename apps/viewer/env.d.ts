@@ -7,6 +7,8 @@ interface ImportMetaEnv {
   readonly VITE_LARGE_BUNDLE_CDN_PREFIX?: string;
 }
 
+declare const __APP_BUILD_ID__: string;
+
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
