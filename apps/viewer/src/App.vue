@@ -10,6 +10,7 @@ import {
   findPetIndexEntry,
   parsePetDeepLink,
 } from "./lib/pet-deep-link";
+import { isViewerWarningLink } from "./lib/viewer-warning";
 import type { PetAnimIndex, PetAnimIndexEntry } from "./lib/pet-anim-index";
 import {
   isRemoteBundleEnabled,
@@ -261,7 +262,13 @@ function canNamedRemoteFailureDownload(): boolean {
 
       <div v-if="warnings.length && warningsVisible" class="warnings">
         <div class="warnings-content">
-          <p v-for="(w, i) in warnings" :key="i">{{ w }}</p>
+          <p v-for="(w, i) in warnings" :key="i">
+            <template v-if="isViewerWarningLink(w)">
+              {{ w.message }}
+              <a :href="w.href" target="_blank" rel="noopener noreferrer">{{ w.href }}</a>
+            </template>
+            <template v-else>{{ w }}</template>
+          </p>
         </div>
         <button
           type="button"
@@ -403,6 +410,12 @@ function canNamedRemoteFailureDownload(): boolean {
 
 .warnings-content p {
   margin: 2px 0;
+}
+
+.warnings-content a {
+  color: inherit;
+  text-decoration: underline;
+  word-break: break-all;
 }
 
 .warnings-close {

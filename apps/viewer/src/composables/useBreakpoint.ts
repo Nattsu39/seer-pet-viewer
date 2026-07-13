@@ -1,10 +1,15 @@
 import { onMounted, onUnmounted, ref } from "vue";
 
-const MOBILE_QUERY = "(max-width: 768px)";
+export const MOBILE_VIEWPORT_QUERY = "(max-width: 768px)";
 
 function readIsMobile(): boolean {
   if (typeof window === "undefined") return false;
-  return window.matchMedia(MOBILE_QUERY).matches;
+  return window.matchMedia(MOBILE_VIEWPORT_QUERY).matches;
+}
+
+/** 同步判断当前视口是否为移动端宽度（与 useBreakpoint 一致） */
+export function isMobileViewport(): boolean {
+  return readIsMobile();
 }
 
 let mediaQuery: MediaQueryList | null = null;
@@ -14,7 +19,7 @@ const isMobile = ref(readIsMobile());
 
 function bindMediaQuery(): void {
   if (typeof window === "undefined") return;
-  mediaQuery ??= window.matchMedia(MOBILE_QUERY);
+  mediaQuery ??= window.matchMedia(MOBILE_VIEWPORT_QUERY);
   mediaListener ??= (e: MediaQueryListEvent) => {
     isMobile.value = e.matches;
   };

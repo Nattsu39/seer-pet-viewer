@@ -3,22 +3,86 @@ import {
   Shader,
   Texture,
   UniformGroup,
-  compileHighShaderGlProgram,
+  GlProgram,
+  compileHighShaderGl,
+  fragmentGlTemplate,
+  globalUniformsBitGl,
   localUniformBitGl,
   roundPixelsBitGl,
-  type GlProgram,
+  vertexGlTemplate,
+  type HighShaderBit,
 } from "pixi.js";
 
 /** 递增以在热更新后强制重新编译 shader */
-const SHADER_CACHE_VERSION = 14;
+const SHADER_CACHE_VERSION = 17;
 let shaderCacheVersion = -1;
+
+/** 超过此边长的图集在移动端使用 mediump 路径，避免 highp 片元运算加剧 OOM */
+export const SWF_HIGH_PRECISION_ATLAS_MAX_SIDE = 2048;
+
+export function useHighPrecisionAtlasSampling(
+  atlasWidth: number,
+  atlasHeight: number,
+): boolean {
+  return (
+    Math.max(atlasWidth, atlasHeight) <= SWF_HIGH_PRECISION_ATLAS_MAX_SIDE
+  );
+}
 
 /**
  * 与 pet_export.sample_bilinear_vec 一致：u*(w-1) 像素坐标 + 软件双线性。
  * 用 nearest + 四次采样，避免硬件对直通 alpha 图集分离插值 RGB/A 产生暗边。
+ * 大图集（>2048）走 legacy + mediump，小图集走 highp + vSwfAtlasUV。
  */
-const swfAtlasTextureBitGl = {
-  name: "swf-atlas-texture-bit",
+const swfAtlasTextureBitGlHigh = {
+  name: "swf-atlas-texture-bit-high",
+  vertex: {
+    header: /* glsl */ `
+      uniform mat3 uTextureMatrix;
+      out highp vec2 vSwfAtlasUV;
+    `,
+    main: /* glsl */ `
+      uv = (uTextureMatrix * vec3(uv, 1.0)).xy;
+      vSwfAtlasUV = uv;
+    `,
+  },
+  fragment: {
+    header: /* glsl */ `
+      in highp vec2 vSwfAtlasUV;
+      uniform sampler2D uTexture;
+      uniform vec2 uAtlasSize;
+
+      vec4 fetchAtlasTexel(vec2 pixel) {
+        vec2 texelUv = (pixel + 0.5) / uAtlasSize;
+        return texture(uTexture, texelUv);
+      }
+
+      vec4 sampleSwfAtlas(vec2 atlasUv) {
+        if (atlasUv.x < 0.0 || atlasUv.x > 1.0 || atlasUv.y < 0.0 || atlasUv.y > 1.0) {
+          return vec4(0.0);
+        }
+        vec2 maxIdx = uAtlasSize - 1.0;
+        vec2 p = atlasUv * maxIdx;
+        vec2 i0 = floor(p);
+        vec2 i1 = min(i0 + 1.0, maxIdx);
+        vec2 f = p - i0;
+        vec4 c00 = fetchAtlasTexel(i0);
+        vec4 c10 = fetchAtlasTexel(vec2(i1.x, i0.y));
+        vec4 c01 = fetchAtlasTexel(vec2(i0.x, i1.y));
+        vec4 c11 = fetchAtlasTexel(i1);
+        vec4 c0 = mix(c00, c10, f.x);
+        vec4 c1 = mix(c01, c11, f.x);
+        return mix(c0, c1, f.y);
+      }
+    `,
+    main: /* glsl */ `
+      outColor = sampleSwfAtlas(vSwfAtlasUV);
+    `,
+  },
+};
+
+const swfAtlasTextureBitGlLegacy = {
+  name: "swf-atlas-texture-bit-legacy",
   vertex: {
     header: /* glsl */ `
       uniform mat3 uTextureMatrix;
@@ -175,63 +239,90 @@ const swfMaskBitGl = {
   },
 };
 
-let glProgramNormal: GlProgram | null = null;
-let glProgramPma: GlProgram | null = null;
-let glProgramGrab: GlProgram | null = null;
-let glProgramMask: GlProgram | null = null;
+type SwfGlProgramSlot = "normal" | "pma" | "grab" | "mask";
+
+const glProgramsHigh: Partial<Record<SwfGlProgramSlot, GlProgram>> = {};
+const glProgramsLegacy: Partial<Record<SwfGlProgramSlot, GlProgram>> = {};
 
 function invalidateShaderCacheIfNeeded(): void {
   if (shaderCacheVersion === SHADER_CACHE_VERSION) return;
-  glProgramNormal = null;
-  glProgramPma = null;
-  glProgramGrab = null;
-  glProgramMask = null;
+  for (const key of Object.keys(glProgramsHigh) as SwfGlProgramSlot[]) {
+    delete glProgramsHigh[key];
+  }
+  for (const key of Object.keys(glProgramsLegacy) as SwfGlProgramSlot[]) {
+    delete glProgramsLegacy[key];
+  }
   shaderCacheVersion = SHADER_CACHE_VERSION;
+}
+
+function compileSwfGlProgram(
+  name: string,
+  bits: HighShaderBit[],
+  fragmentPrecision: "highp" | "mediump",
+): GlProgram {
+  return GlProgram.from({
+    name,
+    preferredFragmentPrecision: fragmentPrecision,
+    preferredVertexPrecision: "highp",
+    ...compileHighShaderGl({
+      template: {
+        vertex: vertexGlTemplate,
+        fragment: fragmentGlTemplate,
+      },
+      bits: [globalUniformsBitGl, ...bits],
+    }),
+  });
 }
 
 function getGlProgram(
   grab: boolean,
-  mask = false,
-  pmaOutput = false,
+  mask: boolean,
+  pmaOutput: boolean,
+  highPrecision: boolean,
 ): GlProgram {
   invalidateShaderCacheIfNeeded();
+  const cache = highPrecision ? glProgramsHigh : glProgramsLegacy;
+  const atlasBit = highPrecision
+    ? swfAtlasTextureBitGlHigh
+    : swfAtlasTextureBitGlLegacy;
+  const suffix = highPrecision ? "-high" : "-legacy";
+  const precision = highPrecision ? "highp" : "mediump";
+
   if (mask) {
-    glProgramMask ??= compileHighShaderGlProgram({
-      name: "swf-mask-shader-atlas",
-      bits: [localUniformBitGl, swfAtlasTextureBitGl, swfMaskBitGl, roundPixelsBitGl],
-    });
-    return glProgramMask;
+    cache.mask ??= compileSwfGlProgram(`swf-mask-shader-atlas${suffix}`, [
+      localUniformBitGl,
+      atlasBit,
+      swfMaskBitGl,
+      roundPixelsBitGl,
+    ], precision);
+    return cache.mask;
   }
   if (grab) {
-    glProgramGrab ??= compileHighShaderGlProgram({
-      name: "swf-grab-shader-atlas",
-      bits: [
-        localUniformBitGl,
-        swfAtlasTextureBitGl,
-        swfColorBitGl,
-        swfGrabBitGl,
-        roundPixelsBitGl,
-      ],
-    });
-    return glProgramGrab;
+    cache.grab ??= compileSwfGlProgram(`swf-grab-shader-atlas${suffix}`, [
+      localUniformBitGl,
+      atlasBit,
+      swfColorBitGl,
+      swfGrabBitGl,
+      roundPixelsBitGl,
+    ], precision);
+    return cache.grab;
   }
   if (pmaOutput) {
-    glProgramPma ??= compileHighShaderGlProgram({
-      name: "swf-shader-atlas-pma",
-      bits: [
-        localUniformBitGl,
-        swfAtlasTextureBitGl,
-        swfColorPmaBitGl,
-        roundPixelsBitGl,
-      ],
-    });
-    return glProgramPma;
+    cache.pma ??= compileSwfGlProgram(`swf-shader-atlas-pma${suffix}`, [
+      localUniformBitGl,
+      atlasBit,
+      swfColorPmaBitGl,
+      roundPixelsBitGl,
+    ], precision);
+    return cache.pma;
   }
-  glProgramNormal ??= compileHighShaderGlProgram({
-    name: "swf-shader-atlas",
-    bits: [localUniformBitGl, swfAtlasTextureBitGl, swfColorBitGl, roundPixelsBitGl],
-  });
-  return glProgramNormal;
+  cache.normal ??= compileSwfGlProgram(`swf-shader-atlas${suffix}`, [
+    localUniformBitGl,
+    atlasBit,
+    swfColorBitGl,
+    roundPixelsBitGl,
+  ], precision);
+  return cache.normal;
 }
 
 export function createSwfShader(
@@ -244,12 +335,13 @@ export function createSwfShader(
   grabSource: Texture["source"] | null = null,
   pmaOutput = false,
 ): Shader {
+  const highPrecision = useHighPrecisionAtlasSampling(atlasWidth, atlasHeight);
   const swfUniforms = new UniformGroup({
     uTint: { value: new Float32Array(tint), type: "vec4<f32>" },
   });
 
   return new Shader({
-    glProgram: getGlProgram(grab, mask, pmaOutput),
+    glProgram: getGlProgram(grab, mask, pmaOutput, highPrecision),
     resources: {
       localUniforms: new UniformGroup({
         uTransformMatrix: { value: new Matrix(), type: "mat3x3<f32>" },

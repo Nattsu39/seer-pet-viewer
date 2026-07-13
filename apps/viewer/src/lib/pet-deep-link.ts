@@ -76,3 +76,25 @@ export function findPetIndexEntry(
   const pool = filtered.length > 0 ? filtered : matches;
   return [...pool].sort((a, b) => entryScore(a) - entryScore(b))[0] ?? null;
 }
+
+export interface BuildPetDeepLinkUrlOptions {
+  kind?: "swf" | "spine";
+  variant?: "small";
+  /** 默认使用当前页面的 origin 与 pathname */
+  location?: Pick<Location, "origin" | "pathname">;
+}
+
+/** 基于当前站点路径生成带精灵 id 查询参数的深链接 */
+export function buildPetDeepLinkUrl(
+  petId: number,
+  options: BuildPetDeepLinkUrlOptions = {},
+): string {
+  const loc =
+    options.location ??
+    (typeof window !== "undefined" ? window.location : undefined);
+  const url = new URL(loc ? `${loc.origin}${loc.pathname}` : "https://localhost/");
+  url.searchParams.set("pet", String(petId));
+  if (options.kind) url.searchParams.set("kind", options.kind);
+  if (options.variant === "small") url.searchParams.set("variant", "small");
+  return url.toString();
+}

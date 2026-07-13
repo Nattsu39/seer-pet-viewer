@@ -32,7 +32,8 @@ import {
   remoteBundleDownloadFilename,
   type DownloadProgress,
 } from "../lib/remote-bundle";
-import { withRuntimeAtlasTileWarning } from "../lib/swf-texture";
+import { withSwfRuntimeWarnings } from "../lib/swf-texture";
+import type { ViewerWarning } from "../lib/viewer-warning";
 
 export interface RemoteLoadContext {
   entry: PetAnimIndexEntry;
@@ -66,7 +67,7 @@ export function usePetLoader(options?: {
   const remoteLoadContext = ref<RemoteLoadContext | null>(null);
   const pet = ref<PetClip | null>(null);
   const parseMs = ref(0);
-  const warnings = ref<string[]>([]);
+  const warnings = ref<ViewerWarning[]>([]);
   const warningsVisible = ref(true);
   const materialCount = ref(0);
   const materialResolver = new MaterialResolver();
@@ -93,11 +94,12 @@ export function usePetLoader(options?: {
     return Object.keys(snapshot).length > 0 ? snapshot : undefined;
   }
 
-  function buildSwfWarnings(parseWarnings: string[], clip: SwfClipData): string[] {
-    const out = withRuntimeAtlasTileWarning(
+  function buildSwfWarnings(parseWarnings: string[], clip: SwfClipData): ViewerWarning[] {
+    const out = withSwfRuntimeWarnings(
       parseWarnings,
       clip.atlasWidth,
       clip.atlasHeight,
+      clip.petId,
     );
     if (materialCount.value > 0) {
       out.unshift(`已加载 ${materialCount.value} 个 SWF 共享材质`);
@@ -192,14 +194,13 @@ export function usePetLoader(options?: {
         pet.value.clip.atlas,
       );
       pet.value = { type: "swf", clip, bundleBuffer: lastSwfBuffer };
-      warnings.value = withRuntimeAtlasTileWarning(
+      warnings.value = buildSwfWarnings(
         [
           `已导入 ${count} 个 SWF 共享材质，并已重新解析当前精灵`,
           ...w,
           ...clip.materialWarnings,
         ],
-        clip.atlasWidth,
-        clip.atlasHeight,
+        clip,
       );
     } else {
       warnings.value = [
