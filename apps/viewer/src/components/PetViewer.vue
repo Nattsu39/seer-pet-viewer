@@ -572,9 +572,9 @@ defineExpose({ fitView });
 }
 
 .canvas-host {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
-  min-height: 240px;
+  min-height: min(240px, 50%);
   position: relative;
   background: var(--canvas-bg);
 }
@@ -591,20 +591,21 @@ defineExpose({ fitView });
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-height: 0;
   overflow: auto;
 }
 
 .viewer.bottom .controls {
-  flex-shrink: 0;
+  flex: 0 1 auto;
   width: 100%;
   padding: 12px 16px;
   border-top: 1px solid var(--border);
-  max-height: 40vh;
+  max-height: min(40vh, 50%);
 }
 
 .viewer.side .controls {
   width: 280px;
-  flex-shrink: 0;
+  flex: 0 0 280px;
   padding: 16px;
   border-left: 1px solid var(--border);
   border-top: none;
@@ -771,9 +772,20 @@ defineExpose({ fitView });
   width: 100%;
 }
 
+.viewer.mobile {
+  overflow: hidden;
+}
+
+.viewer.mobile .canvas-host {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
 .viewer.mobile .controls {
-  flex-shrink: 0;
-  max-height: min(46dvh, calc(100svh - 140px));
+  flex: 0 1 auto;
+  max-height: 50%;
+  min-height: 0;
+  overflow: hidden;
   padding-bottom: max(
     20px,
     calc(env(safe-area-inset-bottom, 0px) + var(--vv-bottom-inset, 0px) + 12px)
@@ -905,8 +917,11 @@ defineExpose({ fitView });
 }
 
 .viewer.mobile .controls-body {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  scroll-padding-bottom: 8px;
 }
 
 .viewer.mobile .seq-tabs {
