@@ -2,7 +2,7 @@
   "repo": "SeerAPI/seer-unity-assets-pet_anim_part",
   "branch": "main",
   "packagePath": "newseer/assetbundles/PetAnimPackage",
-  "updatedAt": "2026-07-30T06:21:08.996Z",
+  "updatedAt": "2026-07-31T03:26:26.481Z",
   "names": [
     "petanimpackage_share_assets_swf_11400184",
     "petanimpackage_share_assets_swf_13291",
@@ -495,6 +495,8 @@
     "ppets_4922",
     "ppets_4923",
     "ppets_4925",
+    "ppets_4927",
+    "ppets_4928",
     "ppets_5000",
     "ppets_502",
     "ppets_5771",
