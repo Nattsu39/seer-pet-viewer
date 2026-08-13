@@ -115,6 +115,11 @@ export class SwfPlayer {
   private fitScale = 1;
   private userZoom = 1;
   private onFrameChange?: (frame: number, total: number) => void;
+  private onViewportChange?: (state: {
+    x: number;
+    y: number;
+    zoom: number;
+  }) => void;
   private readonly handleTick = (ticker: Ticker): void => {
     if (!this.playing || !this.sequence) return;
     this.accumulator += (ticker.deltaMS / 1000) * this.speed;
@@ -283,6 +288,12 @@ export class SwfPlayer {
 
   setOnFrameChange(cb: (frame: number, total: number) => void): void {
     this.onFrameChange = cb;
+  }
+
+  setOnViewportChange(
+    cb: (state: { x: number; y: number; zoom: number }) => void,
+  ): void {
+    this.onViewportChange = cb;
   }
 
   setBackgroundColor(color: number): void {
@@ -522,6 +533,33 @@ export class SwfPlayer {
     const sy = (this.app.screen.height - pad * 2) / bh;
     this.fitScale = Math.min(sx, sy);
     this.applyTransform(true);
+    this.emitViewportChange();
+  }
+
+  getViewportPosition(): { x: number; y: number } {
+    if (!this.app) return { x: 0, y: 0 };
+    const scale = this.fitScale * this.userZoom || 1;
+    return {
+      x: (this.app.screen.width / 2 - this.root.x) / scale,
+      y: (this.root.y - this.app.screen.height / 2) / scale,
+    };
+  }
+
+  setViewportPosition(x: number, y: number): void {
+    if (!this.app || !Number.isFinite(x) || !Number.isFinite(y)) return;
+    const scale = this.fitScale * this.userZoom || 1;
+    this.root.position.set(
+      this.app.screen.width / 2 - x * scale,
+      this.app.screen.height / 2 + y * scale,
+    );
+    this.emitViewportChange();
+  }
+
+  private emitViewportChange(): void {
+    this.onViewportChange?.({
+      ...this.getViewportPosition(),
+      zoom: this.getZoom(),
+    });
   }
 
   private applyTransform(resetPosition = false): void {
@@ -538,8 +576,10 @@ export class SwfPlayer {
   }
 
   setZoom(zoom: number): void {
+    const viewport = this.getViewportPosition();
     this.userZoom = Math.max(0.1, Math.min(zoom, 16));
     this.applyTransform(false);
+    this.setViewportPosition(viewport.x, viewport.y);
   }
 
   getZoom(): number {
@@ -570,6 +610,7 @@ export class SwfPlayer {
       this.root.y += e.clientY - lastY;
       lastX = e.clientX;
       lastY = e.clientY;
+      this.emitViewportChange();
     });
     canvas.addEventListener(
       "wheel",

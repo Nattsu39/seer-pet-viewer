@@ -6,15 +6,13 @@ import type {
 } from "@seer/anim-export";
 
 export type ExportScale = 1 | 2 | 3;
-export type ExportBackgroundMode = "transparent" | "theme";
-
 export function useAnimationExport() {
   const exporting = ref(false);
   const exportError = ref<string | null>(null);
   const exportProgress = ref<ExportProgress | null>(null);
   const exportFormat = ref<ExportFormat>("webp");
   const exportScale = ref<ExportScale>(1);
-  const exportBackground = ref<ExportBackgroundMode>("transparent");
+  const exportBackground = ref(false);
 
   async function runExport(
     source: FrameCaptureSource,
@@ -35,10 +33,9 @@ export function useAnimationExport() {
         {
           sequence,
           scale: exportScale.value,
-          background:
-            exportBackground.value === "transparent"
-              ? "transparent"
-              : backgroundColor,
+          background: exportBackground.value
+            ? backgroundColor
+            : "transparent",
           format: exportFormat.value,
         },
         (p: ExportProgress) => {

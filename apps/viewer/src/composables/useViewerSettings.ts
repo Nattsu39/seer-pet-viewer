@@ -11,6 +11,19 @@ interface ViewerSettings {
   themePreference: ThemePreference;
   toolbarPosition: ToolbarPosition;
   autoImportSharedMaterials: boolean;
+  canvasBackgroundColor: string | null;
+}
+
+const DEFAULT_CANVAS_BACKGROUNDS: Record<ResolvedTheme, string> = {
+  light: "#e8eaf0",
+  dark: "#12121f",
+};
+
+function normalizeHexColor(value: unknown): string | null {
+  if (typeof value !== "string" || !/^#[0-9a-f]{6}$/i.test(value)) {
+    return null;
+  }
+  return value.toLowerCase();
 }
 
 const THEME_CYCLE: ThemePreference[] = ["system", "light", "dark"];
@@ -35,6 +48,7 @@ function readStored(): ViewerSettings {
         themePreference: "system",
         toolbarPosition: "bottom",
         autoImportSharedMaterials: true,
+        canvasBackgroundColor: null,
       };
     }
     const parsed = JSON.parse(raw) as Partial<ViewerSettings>;
@@ -48,12 +62,14 @@ function readStored(): ViewerSettings {
       toolbarPosition:
         parsed.toolbarPosition === "side" ? "side" : "bottom",
       autoImportSharedMaterials: parsed.autoImportSharedMaterials !== false,
+      canvasBackgroundColor: normalizeHexColor(parsed.canvasBackgroundColor),
     };
   } catch {
     return {
       themePreference: "system",
       toolbarPosition: "bottom",
       autoImportSharedMaterials: true,
+      canvasBackgroundColor: null,
     };
   }
 }
@@ -93,9 +109,27 @@ const stored = readStored();
 const themePreference = ref<ThemePreference>(stored.themePreference);
 const toolbarPosition = ref<ToolbarPosition>(stored.toolbarPosition);
 const autoImportSharedMaterials = ref(stored.autoImportSharedMaterials);
+const customCanvasBackgroundColor = ref<string | null>(
+  stored.canvasBackgroundColor,
+);
 const resolvedTheme = ref<ResolvedTheme>(resolveTheme(stored.themePreference));
+const canvasBackgroundColor = computed({
+  get: () =>
+    customCanvasBackgroundColor.value ??
+    DEFAULT_CANVAS_BACKGROUNDS[resolvedTheme.value],
+  set: (value: string) => {
+    const normalized = normalizeHexColor(value);
+    if (normalized) customCanvasBackgroundColor.value = normalized;
+  },
+});
 
 applyResolvedTheme(resolvedTheme.value);
+if (customCanvasBackgroundColor.value) {
+  document.documentElement.style.setProperty(
+    "--canvas-bg",
+    customCanvasBackgroundColor.value,
+  );
+}
 
 let mediaQuery: MediaQueryList | null = null;
 let mediaListener: ((e: MediaQueryListEvent) => void) | null = null;
@@ -106,6 +140,7 @@ function persist(): void {
     themePreference: themePreference.value,
     toolbarPosition: toolbarPosition.value,
     autoImportSharedMaterials: autoImportSharedMaterials.value,
+    canvasBackgroundColor: customCanvasBackgroundColor.value,
   });
 }
 
@@ -142,6 +177,14 @@ export function useViewerSettings() {
 
   watch(toolbarPosition, persist);
   watch(autoImportSharedMaterials, persist);
+  watch(customCanvasBackgroundColor, (color) => {
+    if (color) {
+      document.documentElement.style.setProperty("--canvas-bg", color);
+    } else {
+      document.documentElement.style.removeProperty("--canvas-bg");
+    }
+    persist();
+  });
 
   const themeLabel = computed(() => THEME_LABELS[themePreference.value]);
   const nextThemeLabel = computed(
@@ -167,10 +210,18 @@ export function useViewerSettings() {
       toolbarPosition.value === "bottom" ? "side" : "bottom";
   }
 
+  function resetCanvasBackgroundColor(): void {
+    customCanvasBackgroundColor.value = null;
+  }
+
   return {
     themePreference,
     toolbarPosition,
     autoImportSharedMaterials,
+    canvasBackgroundColor,
+    hasCustomCanvasBackground: computed(
+      () => customCanvasBackgroundColor.value !== null,
+    ),
     effectiveToolbarPosition,
     isMobile,
     resolvedTheme,
@@ -180,5 +231,6 @@ export function useViewerSettings() {
     nextToolbarLabel,
     cycleTheme,
     toggleToolbarPosition,
+    resetCanvasBackgroundColor,
   };
 }

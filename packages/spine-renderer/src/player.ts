@@ -68,6 +68,11 @@ export class SpinePlayer {
   private rafId = 0;
   private lastTime = 0;
   private onFrameChange?: (frame: number, total: number) => void;
+  private onViewportChange?: (state: {
+    x: number;
+    y: number;
+    zoom: number;
+  }) => void;
 
   private fitZoom = 1;
   private userZoom = 1;
@@ -163,6 +168,12 @@ export class SpinePlayer {
 
   setOnFrameChange(cb: (frame: number, total: number) => void): void {
     this.onFrameChange = cb;
+  }
+
+  setOnViewportChange(
+    cb: (state: { x: number; y: number; zoom: number }) => void,
+  ): void {
+    this.onViewportChange = cb;
   }
 
   setBackgroundColor(color: number): void {
@@ -349,6 +360,39 @@ export class SpinePlayer {
   fitToView(): void {
     this.userZoom = 1;
     this.updateCamera(true);
+    this.emitViewportChange();
+  }
+
+  getViewportPosition(): { x: number; y: number } {
+    return { x: this.cameraX, y: this.cameraY };
+  }
+
+  setViewportPosition(x: number, y: number): void {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    this.cameraX = x;
+    this.cameraY = y;
+    this.updateCamera(false);
+    this.emitViewportChange();
+  }
+
+  getZoom(): number {
+    return 1 / this.userZoom;
+  }
+
+  setZoom(zoom: number): void {
+    if (!Number.isFinite(zoom)) return;
+    const clampedZoom = Math.max(0.1, Math.min(zoom, 16));
+    this.userZoom = 1 / clampedZoom;
+    this.updateCamera(false);
+    this.emitViewportChange();
+  }
+
+  private emitViewportChange(): void {
+    if (this.exportSuspended) return;
+    this.onViewportChange?.({
+      ...this.getViewportPosition(),
+      zoom: this.getZoom(),
+    });
   }
 
   enablePan(): void {
@@ -387,15 +431,14 @@ export class SpinePlayer {
       this.cameraX = dragCameraX - delta.x;
       this.cameraY = dragCameraY - delta.y;
       this.updateCamera(false);
+      this.emitViewportChange();
     });
     canvas.addEventListener(
       "wheel",
       (e: WheelEvent) => {
         e.preventDefault();
-        // zoom 越大视野越大；滚轮向上应放大（减小 zoom）
-        const factor = e.deltaY > 0 ? 1.1 : 0.9;
-        this.userZoom = Math.max(0.1, Math.min(this.userZoom * factor, 16));
-        this.updateCamera(false);
+        const factor = e.deltaY > 0 ? 0.9 : 1.1;
+        this.setZoom(this.getZoom() * factor);
       },
       { passive: false },
     );
@@ -406,7 +449,7 @@ export class SpinePlayer {
         if (e.touches.length === 2) {
           pinching = true;
           initialPinchDistance = getTouchDistance(e.touches[0], e.touches[1]);
-          initialZoom = this.userZoom;
+          initialZoom = this.getZoom();
         }
       },
       { passive: false },
@@ -419,8 +462,7 @@ export class SpinePlayer {
         e.preventDefault();
         const currentDistance = getTouchDistance(e.touches[0], e.touches[1]);
         const scale = currentDistance / initialPinchDistance;
-        this.userZoom = Math.max(0.1, Math.min(initialZoom * scale, 16));
-        this.updateCamera(false);
+        this.setZoom(initialZoom * scale);
       },
       { passive: false },
     );

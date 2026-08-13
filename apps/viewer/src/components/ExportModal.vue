@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { ExportFormat } from "@seer/anim-export";
-import type {
-  ExportBackgroundMode,
-  ExportScale,
-} from "../composables/useAnimationExport";
+import type { ExportScale } from "../composables/useAnimationExport";
 import { useVisualViewportBottomInset } from "../composables/useVisualViewportBottomInset";
 
 defineProps<{
@@ -14,7 +11,7 @@ defineProps<{
   exportProgressLabel: string;
   exportFormat: ExportFormat;
   exportScale: ExportScale;
-  exportBackground: ExportBackgroundMode;
+  exportBackground: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -22,7 +19,7 @@ const emit = defineEmits<{
   export: [];
   "update:exportFormat": [value: ExportFormat];
   "update:exportScale": [value: ExportScale];
-  "update:exportBackground": [value: ExportBackgroundMode];
+  "update:exportBackground": [value: boolean];
 }>();
 
 const { bottomInset } = useVisualViewportBottomInset();
@@ -98,22 +95,19 @@ const modalStyle = computed(
               <option :value="3">3×</option>
             </select>
           </label>
-          <label class="export-field">
-            <span>背景</span>
-            <select
-              :value="exportBackground"
+          <label class="export-check">
+            <input
+              type="checkbox"
+              :checked="exportBackground"
               :disabled="exporting"
               @change="
                 emit(
                   'update:exportBackground',
-                  ($event.target as HTMLSelectElement)
-                    .value as ExportBackgroundMode,
+                  ($event.target as HTMLInputElement).checked,
                 )
               "
-            >
-              <option value="transparent">透明</option>
-              <option value="theme">当前主题</option>
-            </select>
+            />
+            <span>导出当前背景色</span>
           </label>
           <p v-if="exportError" class="export-modal-error">{{ exportError }}</p>
         </div>
@@ -213,6 +207,15 @@ const modalStyle = computed(
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--bg);
+  color: var(--text);
+}
+
+.export-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: 0.9rem;
   color: var(--text);
 }
 

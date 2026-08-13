@@ -35,7 +35,11 @@ const emit = defineEmits<{
   fpsUpdate: [fps: number];
 }>();
 
-const { resolvedTheme } = useViewerSettings();
+const {
+  canvasBackgroundColor,
+  hasCustomCanvasBackground,
+  resetCanvasBackgroundColor,
+} = useViewerSettings();
 const {
   exporting,
   exportError,
@@ -55,6 +59,9 @@ const loop = ref(true);
 const speed = ref(1);
 const currentFrame = ref(0);
 const frameCount = ref(0);
+const viewportX = ref("0.00");
+const viewportY = ref("0.00");
+const viewportZoom = ref("1.00");
 const controlsCollapsed = ref(false);
 const showExportModal = ref(false);
 const { openOverlay: openExportModal, closeOverlay: closeExportModal } =
@@ -99,6 +106,10 @@ type PlayerControls = {
   setLoop(loop: boolean): void;
   setSpeed(speed: number): void;
   fitToView(): void;
+  getViewportPosition(): { x: number; y: number };
+  setViewportPosition(x: number, y: number): void;
+  getZoom(): number;
+  setZoom(zoom: number): void;
 };
 
 function activePlayer(): PlayerControls | null {
@@ -122,6 +133,12 @@ function syncPlayerBackground() {
   spinePlayer.value?.setBackgroundColor(bg);
 }
 
+function syncViewportState(state: { x: number; y: number; zoom: number }) {
+  viewportX.value = state.x.toFixed(2);
+  viewportY.value = state.y.toFixed(2);
+  viewportZoom.value = state.zoom.toFixed(2);
+}
+
 async function initSwfPlayer(clip: SwfClipData, bundleBuffer?: ArrayBuffer | null) {
   spinePlayer.value?.destroy();
   spinePlayer.value = null;
@@ -133,6 +150,7 @@ async function initSwfPlayer(clip: SwfClipData, bundleBuffer?: ArrayBuffer | nul
   await ensureSwfClipAtlas(clip, bundleBuffer);
 
   const p = new SwfPlayer();
+  p.setOnViewportChange(syncViewportState);
   p.setOnFrameChange((frame, total) => {
     currentFrame.value = frame;
     frameCount.value = total;
@@ -176,6 +194,7 @@ async function initSpinePlayer(clip: SpineClipData) {
   currentFrame.value = 0;
 
   const p = new SpinePlayer();
+  p.setOnViewportChange(syncViewportState);
   p.setOnFrameChange((frame, total) => {
     currentFrame.value = frame;
     frameCount.value = total;
@@ -231,7 +250,7 @@ watch(
   { flush: "post", immediate: true },
 );
 
-watch(resolvedTheme, () => {
+watch(canvasBackgroundColor, () => {
   syncPlayerBackground();
 });
 
@@ -272,6 +291,29 @@ function onSeek(e: Event) {
 
 function fitView() {
   activePlayer()?.fitToView();
+}
+
+function applyViewportState() {
+  const x = Number(viewportX.value);
+  const y = Number(viewportY.value);
+  const zoom = Number(viewportZoom.value);
+  if (
+    !Number.isFinite(x) ||
+    !Number.isFinite(y) ||
+    !Number.isFinite(zoom) ||
+    zoom < 0.1 ||
+    zoom > 16
+  ) {
+    const player = activePlayer();
+    const current = player?.getViewportPosition();
+    if (player && current) {
+      syncViewportState({ ...current, zoom: player.getZoom() });
+    }
+    return;
+  }
+  const player = activePlayer();
+  player?.setViewportPosition(x, y);
+  player?.setZoom(zoom);
 }
 
 let fitViewFrame = 0;
@@ -433,107 +475,167 @@ defineExpose({ fitView });
       </div>
 
       <div v-show="!isMobile || !controlsCollapsed" class="controls-body">
-      <div class="controls-row controls-main">
-        <div class="controls-main-top">
-          <div class="seq-tabs">
+        <div class="controls-row controls-main">
+          <div class="controls-main-top">
+            <div class="seq-tabs">
+              <button
+                v-for="seq in sequenceOptions"
+                :key="seq.value"
+                :class="{ active: currentSequence === seq.value }"
+                @click="currentSequence = seq.value"
+              >
+                {{ seq.label }}
+                <span v-if="pet.type === 'swf'" class="count">{{ seq.frames }}</span>
+              </button>
+            </div>
             <button
-              v-for="seq in sequenceOptions"
-              :key="seq.value"
-              :class="{ active: currentSequence === seq.value }"
-              @click="currentSequence = seq.value"
+              v-if="isMobile"
+              type="button"
+              class="controls-collapse-btn compact"
+              aria-label="收起控制栏"
+              :aria-expanded="true"
+              @click="toggleControlsCollapsed"
             >
-              {{ seq.label }}
-              <span v-if="pet.type === 'swf'" class="count">{{ seq.frames }}</span>
+              ▼
             </button>
           </div>
+
+          <div class="transport">
+            <button :disabled="exporting" @click="stepFrame(-1)">上一帧</button>
+            <button class="primary" :disabled="exporting" @click="togglePlay">
+              {{ playing ? "暂停" : "播放" }}
+            </button>
+            <button :disabled="exporting" @click="stepFrame(1)">下一帧</button>
+            <label class="check">
+              <input v-model="loop" type="checkbox" :disabled="exporting" />
+              循环
+            </label>
+          </div>
+        </div>
+
+        <div class="controls-row controls-secondary">
+          <div class="scrub">
+            <input
+              type="range"
+              :min="0"
+              :max="Math.max(0, frameCount - 1)"
+              :value="currentFrame"
+              :disabled="exporting"
+              @input="onSeek"
+            />
+            <span>{{ currentFrame + 1 }} / {{ frameCount }}</span>
+          </div>
+
+          <div class="speed">
+            <label>速度 {{ speed.toFixed(2) }}×</label>
+            <input v-model.number="speed" type="range" min="0.25" max="2" step="0.25" />
+          </div>
+        </div>
+
+        <div class="controls-row controls-tertiary">
+          <section class="control-group canvas-tools" aria-label="画布工具">
+            <span class="group-title">画布</span>
+            <button class="fit-btn" @click="fitView">适应窗口</button>
+            <div class="background-control">
+              <label>
+                <span>背景色</span>
+                <input
+                  v-model="canvasBackgroundColor"
+                  type="color"
+                  aria-label="选择画布背景色"
+                />
+              </label>
+              <code>{{ canvasBackgroundColor }}</code>
+              <button
+                v-if="hasCustomCanvasBackground"
+                type="button"
+                class="compact-btn"
+                title="恢复当前主题的默认背景色"
+                @click="resetCanvasBackgroundColor"
+              >
+                重置
+              </button>
+            </div>
+          </section>
+
+          <form
+            class="viewport-control control-group"
+            aria-label="视口参数"
+            @submit.prevent="applyViewportState"
+          >
+            <span class="group-title">视口</span>
+            <label>
+              <span>X</span>
+              <input v-model="viewportX" type="number" step="0.01" />
+            </label>
+            <label>
+              <span>Y</span>
+              <input v-model="viewportY" type="number" step="0.01" />
+            </label>
+            <label class="zoom-field">
+              <span>缩放倍率</span>
+              <input
+                v-model="viewportZoom"
+                type="number"
+                min="0.1"
+                max="16"
+                step="0.01"
+              />
+            </label>
+            <button type="submit" class="compact-btn">设置</button>
+          </form>
+
           <button
             v-if="isMobile"
             type="button"
-            class="controls-collapse-btn compact"
-            aria-label="收起控制栏"
-            :aria-expanded="true"
-            @click="toggleControlsCollapsed"
-          >
-            ▼
-          </button>
-        </div>
-
-        <div class="transport">
-          <button :disabled="exporting" @click="stepFrame(-1)">上一帧</button>
-          <button class="primary" :disabled="exporting" @click="togglePlay">
-            {{ playing ? "暂停" : "播放" }}
-          </button>
-          <button :disabled="exporting" @click="stepFrame(1)">下一帧</button>
-          <label class="check">
-            <input v-model="loop" type="checkbox" :disabled="exporting" />
-            循环
-          </label>
-        </div>
-      </div>
-
-      <div class="controls-row controls-secondary">
-        <div class="scrub">
-          <input
-            type="range"
-            :min="0"
-            :max="Math.max(0, frameCount - 1)"
-            :value="currentFrame"
+            class="export-open-btn"
             :disabled="exporting"
-            @input="onSeek"
-          />
-          <span>{{ currentFrame + 1 }} / {{ frameCount }}</span>
-        </div>
-
-        <div class="speed">
-          <label>速度 {{ speed.toFixed(2) }}×</label>
-          <input v-model.number="speed" type="range" min="0.25" max="2" step="0.25" />
-        </div>
-
-        <button class="fit-btn" @click="fitView">适应窗口</button>
-
-        <button
-          v-if="isMobile"
-          type="button"
-          class="export-open-btn"
-          :disabled="exporting"
-          @click="openMobileExport"
-        >
-          导出动画
-        </button>
-
-        <div v-if="!isMobile" class="export-group">
-          <label class="export-field">
-            <span>格式</span>
-            <select v-model="exportFormat" :disabled="exporting">
-              <option value="webp">WebP</option>
-              <option value="gif">GIF</option>
-            </select>
-          </label>
-          <label class="export-field">
-            <span>缩放</span>
-            <select v-model.number="exportScale" :disabled="exporting">
-              <option :value="1">1×</option>
-              <option :value="2">2×</option>
-              <option :value="3">3×</option>
-            </select>
-          </label>
-          <label class="export-field">
-            <span>背景</span>
-            <select v-model="exportBackground" :disabled="exporting">
-              <option value="transparent">透明</option>
-              <option value="theme">当前主题</option>
-            </select>
-          </label>
-          <button
-            class="export-btn primary"
-            :disabled="exporting"
-            @click="handleExport"
+            @click="openMobileExport"
           >
-            {{ exporting ? exportProgressLabel || "导出中…" : "导出动画" }}
+            导出动画
           </button>
+
+          <section
+            v-if="!isMobile"
+            class="export-group control-group"
+            aria-label="导出设置"
+          >
+            <span class="group-title">导出</span>
+            <label class="export-field">
+              <span>格式</span>
+              <select v-model="exportFormat" :disabled="exporting">
+                <option value="webp">WebP</option>
+                <option value="gif">GIF</option>
+              </select>
+            </label>
+            <label class="export-field">
+              <span>缩放</span>
+              <select v-model.number="exportScale" :disabled="exporting">
+                <option :value="1">1×</option>
+                <option :value="2">2×</option>
+                <option :value="3">3×</option>
+              </select>
+            </label>
+            <label class="export-background-check check">
+              <input
+                v-model="exportBackground"
+                type="checkbox"
+                :disabled="exporting"
+              />
+              <span>背景色</span>
+            </label>
+            <button
+              class="export-btn primary"
+              :disabled="exporting"
+              @click="handleExport"
+            >
+              {{ exporting ? exportProgressLabel || "导出中…" : "导出动画" }}
+            </button>
+          </section>
         </div>
-        <p v-if="exportError && !isMobile" class="export-error">{{ exportError }}</p>
-      </div>
+        <p v-if="exportError && !isMobile" class="export-error">
+          {{ exportError }}
+        </p>
       </div>
     </aside>
 
@@ -626,9 +728,113 @@ defineExpose({ fitView });
   flex-wrap: wrap;
 }
 
+.controls-tertiary {
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 50px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 42%, transparent);
+}
+
+.group-title {
+  flex-shrink: 0;
+  align-self: center;
+  font-size: 0.76rem;
+  font-weight: 650;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.canvas-tools {
+  flex: 0 1 auto;
+}
+
+.viewer.bottom:not(.mobile) .controls {
+  padding: 10px 14px;
+}
+
+.viewer.bottom:not(.mobile) .controls-body {
+  gap: 8px;
+}
+
+.viewer.bottom:not(.mobile) .controls-main {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.viewer.bottom:not(.mobile) .controls-secondary {
+  flex-wrap: nowrap;
+  padding: 0 2px;
+}
+
+.viewer.bottom:not(.mobile) .controls-tertiary .viewport-control {
+  flex: 1 1 430px;
+}
+
+.viewer.bottom:not(.mobile) .controls-tertiary .export-group {
+  flex: 0 1 auto;
+  margin-left: auto;
+}
+
+@media (min-width: 769px) and (max-width: 1180px) {
+  .viewer.bottom:not(.mobile) .controls-tertiary .export-group {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+}
+
 .viewer.side .controls-row {
   flex-direction: column;
   align-items: stretch;
+}
+
+.viewer.side .control-group {
+  width: 100%;
+}
+
+.viewer.side .group-title {
+  width: 100%;
+}
+
+.viewer.side .canvas-tools {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.viewer.side .canvas-tools .background-control {
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.viewer.side .viewport-control {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.viewer.side .viewport-control label {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  flex: none;
+  width: 100%;
+}
+
+.viewer.side .viewport-control input[type="number"] {
+  width: 100%;
+  min-width: 0;
+}
+
+.viewer.side .viewport-control .compact-btn {
+  width: 100%;
 }
 
 .seq-tabs {
@@ -708,6 +914,11 @@ defineExpose({ fitView });
   width: 100%;
 }
 
+.scrub input[type="range"],
+.speed input[type="range"] {
+  margin-inline: 0;
+}
+
 .speed {
   display: flex;
   flex-direction: column;
@@ -725,6 +936,68 @@ defineExpose({ fitView });
 }
 
 .viewer.side .fit-btn {
+  width: 100%;
+}
+
+.background-control,
+.viewport-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
+.background-control label,
+.viewport-control label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.background-control input[type="color"] {
+  width: 36px;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.background-control code {
+  color: var(--text);
+  font-size: 0.9em;
+}
+
+.viewport-control input[type="number"] {
+  width: 78px;
+  min-height: 32px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.zoom-field span {
+  white-space: nowrap;
+}
+
+.compact-btn {
+  min-height: 32px;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+.viewer.side .background-control,
+.viewer.side .viewport-control {
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.viewer.side .viewport-control input[type="number"] {
   width: 100%;
 }
 
@@ -759,6 +1032,11 @@ defineExpose({ fitView });
 
 .export-btn {
   flex-shrink: 0;
+}
+
+.export-background-check {
+  min-height: 34px;
+  white-space: nowrap;
 }
 
 .viewer.side .export-btn {
@@ -957,12 +1235,69 @@ defineExpose({ fitView });
 
 .viewer.mobile .scrub,
 .viewer.mobile .speed,
-.viewer.mobile .fit-btn {
+.viewer.mobile .fit-btn,
+.viewer.mobile .background-control,
+.viewer.mobile .viewport-control {
   width: 100%;
 }
 
 .viewer.mobile .fit-btn {
   min-height: 44px;
+}
+
+.viewer.mobile .background-control,
+.viewer.mobile .viewport-control {
+  min-height: 44px;
+  flex-wrap: wrap;
+}
+
+.viewer.mobile .control-group {
+  width: 100%;
+}
+
+.viewer.mobile .group-title {
+  width: 100%;
+}
+
+.viewer.mobile .canvas-tools {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.viewer.mobile .canvas-tools .background-control {
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.viewer.mobile .viewport-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: end;
+}
+
+.viewer.mobile .viewport-control .group-title,
+.viewer.mobile .viewport-control .zoom-field,
+.viewer.mobile .viewport-control .compact-btn {
+  grid-column: 1 / -1;
+}
+
+.viewer.mobile .viewport-control label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  width: 100%;
+}
+
+.viewer.mobile .viewport-control input[type="number"] {
+  min-width: 0;
+}
+
+.viewer.mobile .viewport-control .compact-btn {
+  width: 100%;
+}
+
+.viewer.mobile .viewport-control input[type="number"] {
+  width: 100%;
+  min-height: 40px;
 }
 
 .export-open-btn {
