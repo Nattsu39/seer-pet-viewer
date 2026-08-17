@@ -1,7 +1,7 @@
 import "./buffer-setup.js";
 import { MaterialResolver } from "./material.js";
 import { parseBundleCore } from "./parse.js";
-import { parsedBundleToJson } from "./clip-data.js";
+import { encodeParsedSwfBundle } from "./worker-protocol.js";
 import type { SwfMaterialState } from "./types.js";
 
 export interface WorkerRequest {
@@ -17,18 +17,17 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     const resolver = new MaterialResolver();
     if (materials) resolver.restore(materials);
     const core = await parseBundleCore(buffer, fileName, resolver);
-    const meta = parsedBundleToJson(core);
-    const rgba = core.atlasPixels.rgba;
+    const encoded = encodeParsedSwfBundle(core);
     self.postMessage(
       {
         id,
         ok: true,
-        meta,
-        atlasWidth: core.atlasWidth,
-        atlasHeight: core.atlasHeight,
-        atlasRgba: rgba.buffer,
+        descriptor: encoded.descriptor,
+        floatBuffer: encoded.floatBuffer,
+        uintBuffer: encoded.uintBuffer,
+        atlasBuffer: encoded.atlasBuffer,
       },
-      [rgba.buffer, buffer],
+      [encoded.floatBuffer, encoded.uintBuffer, encoded.atlasBuffer],
     );
   } catch (error) {
     self.postMessage({

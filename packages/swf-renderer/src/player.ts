@@ -707,11 +707,16 @@ export class SwfPlayer {
   }
 
   private clearMeshes(): void {
+    const geometries = new Set<Geometry>();
     for (const mesh of this.meshes) {
-      mesh.geometry?.destroy(true);
+      if (mesh.geometry) geometries.add(mesh.geometry);
     }
     for (const child of [...this.stage.children]) {
       child.destroy({ children: true });
+    }
+    for (const geometry of geometries) {
+      geometry.unload();
+      geometry.destroy(true);
     }
     this.meshes = [];
   }
