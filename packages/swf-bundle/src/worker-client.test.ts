@@ -6,7 +6,7 @@ import {
   it,
   vi,
 } from "vitest";
-import { encodeParsedSwfBundle } from "./worker-protocol.js";
+import { encodeParsedSwfBundle, encodeSwfBundleFrames } from "./worker-protocol.js";
 import type { ParsedSwfBundle } from "./types.js";
 
 const testState = vi.hoisted(() => ({
@@ -107,6 +107,18 @@ function successMessage(id: number) {
   };
 }
 
+function bitmapMessage(id: number, atlasBitmap: ImageBitmap) {
+  const encoded = encodeSwfBundleFrames(makeBundle());
+  return {
+    id,
+    ok: true,
+    descriptor: encoded.descriptor,
+    floatBuffer: encoded.floatBuffer,
+    uintBuffer: encoded.uintBuffer,
+    atlasBitmap,
+  };
+}
+
 function requestBuffer(): ArrayBuffer {
   return new ArrayBuffer(16);
 }
@@ -142,6 +154,29 @@ afterEach(() => {
 });
 
 describe("parseBundleInWorker lifecycle", () => {
+  it("adopts the worker-built atlas bitmap without decoding pixels on the main thread", async () => {
+    const atlasBitmap = { width: 2, height: 1 } as ImageBitmap;
+    const result = client.parseBundleInWorker(requestBuffer(), "bitmap");
+    const parser = FakeWorker.instances[0]!;
+    parser.emitMessage(bitmapMessage(1, atlasBitmap));
+
+    const clip = await result;
+    expect(clip.atlas).toBe(atlasBitmap);
+    expect(clip.atlasWidth).toBe(2);
+    expect(clip.sequences[0]!.frames[0]!.mesh.positions[0]).toBe(1);
+    expect(testState.atlasPixelsToBitmap).not.toHaveBeenCalled();
+    expect(parser.terminated).toBe(true);
+  });
+
+  it("rejects a response that carries no atlas payload", async () => {
+    const result = client.parseBundleInWorker(requestBuffer(), "no-atlas");
+    const parser = FakeWorker.instances[0]!;
+    const { atlasBuffer: _atlasBuffer, ...withoutAtlas } = successMessage(1);
+    parser.emitMessage(withoutAtlas);
+
+    await expect(result).rejects.toThrow("解析 Worker 未返回图集数据");
+  });
+
   it("shares one worker for two concurrent requests and terminates before bitmap decoding", async () => {
     const source = requestBuffer();
     const first = client.parseBundleInWorker(source, "first");

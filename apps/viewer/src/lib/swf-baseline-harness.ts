@@ -37,6 +37,8 @@ export interface SwfBaselineEnvironment {
   maxTextureSize: number;
   atlasLogical: { width: number; height: number };
   atlasBitmap: { width: number; height: number };
+  /** 图集位图已在 GPU 上传后释放（releaseAtlasAfterUpload），CPU 侧不再持有像素 */
+  atlasBitmapReleased: boolean;
   atlasScaled: boolean;
   petId: number;
   frameRate: number;
@@ -155,24 +157,40 @@ async function capturePreviewPixels(player: SwfBaselinePlayer): Promise<RgbaImag
   };
 }
 
-export function installSwfBaselineHarness(options: {
+interface SwfBaselineAccessors {
   getPlayer: () => SwfBaselinePlayer | null;
   getClip: () => SwfClipData | null;
-}): void {
+}
+
+/**
+ * 每次挂载都会重新注册访问器：PetViewer 重建后旧闭包会指向已 destroy 的播放器，
+ * 而 harness 对象本身必须保持同一个引用（页面里已有的引用要继续可用）。
+ */
+let accessors: SwfBaselineAccessors = {
+  getPlayer: () => null,
+  getClip: () => null,
+};
+
+export function installSwfBaselineHarness(options: SwfBaselineAccessors): void {
   if (!import.meta.env.DEV) return;
+  accessors = options;
   if ((window as Window & { __SEER_SWF_BASELINE__?: SwfBaselineHarness }).__SEER_SWF_BASELINE__) {
     return;
   }
+  const current = {
+    getPlayer: () => accessors.getPlayer(),
+    getClip: () => accessors.getClip(),
+  };
 
   const harness: SwfBaselineHarness = {
     version: SWF_BASELINE_HARNESS_VERSION,
     get ready() {
-      return options.getPlayer() != null && options.getClip() != null;
+      return current.getPlayer() != null && current.getClip() != null;
     },
 
     getEnvironment() {
-      const player = options.getPlayer();
-      const clip = options.getClip();
+      const player = current.getPlayer();
+      const clip = current.getClip();
       if (!player || !clip) return null;
       const bitmapWidth = clip.atlas.width > 0 ? clip.atlas.width : clip.atlasWidth;
       const bitmapHeight = clip.atlas.height > 0 ? clip.atlas.height : clip.atlasHeight;
@@ -183,6 +201,7 @@ export function installSwfBaselineHarness(options: {
         maxTextureSize: getEffectiveMaxTextureSize(),
         atlasLogical: { width: clip.atlasWidth, height: clip.atlasHeight },
         atlasBitmap: { width: bitmapWidth, height: bitmapHeight },
+        atlasBitmapReleased: clip.atlas.width === 0 || clip.atlas.height === 0,
         atlasScaled:
           bitmapWidth !== clip.atlasWidth || bitmapHeight !== clip.atlasHeight,
         petId: clip.petId,
@@ -197,11 +216,11 @@ export function installSwfBaselineHarness(options: {
     },
 
     getAtlasTileDebugInfo() {
-      return options.getPlayer()?.getAtlasTileDebugInfo() ?? null;
+      return current.getPlayer()?.getAtlasTileDebugInfo() ?? null;
     },
 
     async setSequence(name) {
-      const player = options.getPlayer();
+      const player = current.getPlayer();
       if (!player) throw new Error("播放器未就绪");
       player.setSequence(name);
       player.pause();
@@ -210,7 +229,7 @@ export function installSwfBaselineHarness(options: {
     },
 
     async gotoFrame(frame) {
-      const player = options.getPlayer();
+      const player = current.getPlayer();
       if (!player) throw new Error("播放器未就绪");
       player.gotoFrame(frame);
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -218,15 +237,15 @@ export function installSwfBaselineHarness(options: {
     },
 
     pause() {
-      options.getPlayer()?.pause();
+      current.getPlayer()?.pause();
     },
 
     fitToView() {
-      options.getPlayer()?.fitToView();
+      current.getPlayer()?.fitToView();
     },
 
     async captureExportFrameRgba(captureOptions) {
-      const player = options.getPlayer();
+      const player = current.getPlayer();
       if (!player) throw new Error("播放器未就绪");
       const targetFrame = captureOptions.frame ?? 0;
       for await (const frame of player.captureFrames({
@@ -249,7 +268,7 @@ export function installSwfBaselineHarness(options: {
     },
 
     async captureExportSequence(captureOptions) {
-      const player = options.getPlayer();
+      const player = current.getPlayer();
       if (!player) throw new Error("播放器未就绪");
       const out: SwfBaselineExportFrame[] = [];
       for await (const frame of player.captureFrames({
@@ -275,7 +294,7 @@ export function installSwfBaselineHarness(options: {
     },
 
     async capturePreviewPixels() {
-      const player = options.getPlayer();
+      const player = current.getPlayer();
       if (!player) throw new Error("播放器未就绪");
       return capturePreviewPixels(player);
     },
@@ -285,7 +304,7 @@ export function installSwfBaselineHarness(options: {
     },
 
     async comparePreviewToReference(referenceUrl, alignmentOptions) {
-      const player = options.getPlayer();
+      const player = current.getPlayer();
       if (!player) throw new Error("播放器未就绪");
       const reference = await loadReferencePng(referenceUrl);
       const candidate = await capturePreviewPixels(player);

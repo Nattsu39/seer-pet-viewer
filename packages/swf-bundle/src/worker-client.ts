@@ -1,7 +1,9 @@
 import type { SwfClipData, SwfMaterialState } from "./types.js";
 import { atlasPixelsToBitmap } from "./atlas.js";
 import {
-  decodeParsedSwfBundle,
+  decodeAtlasPixels,
+  decodeSwfBundleFrames,
+  type DecodedSwfBundleFrames,
   type PackedSwfBundleDescriptor,
 } from "./worker-protocol.js";
 
@@ -11,7 +13,10 @@ interface WorkerSuccessMessage {
   descriptor: PackedSwfBundleDescriptor;
   floatBuffer: ArrayBuffer;
   uintBuffer: ArrayBuffer;
-  atlasBuffer: ArrayBuffer;
+  /** Worker 已完成 padding 处理与位图化时使用 */
+  atlasBitmap?: ImageBitmap;
+  /** 回退路径：图集以 RGBA buffer 传输，由主线程位图化 */
+  atlasBuffer?: ArrayBuffer;
 }
 
 interface WorkerErrorMessage {
@@ -141,8 +146,8 @@ function settleRequest(
 }
 
 function toClipData(
-  parsed: ReturnType<typeof decodeParsedSwfBundle>,
-  bitmap: Awaited<ReturnType<typeof atlasPixelsToBitmap>>,
+  parsed: DecodedSwfBundleFrames,
+  atlas: ImageBitmap,
 ): SwfClipData {
   return {
     petId: parsed.petId,
@@ -150,10 +155,26 @@ function toClipData(
     frameRate: parsed.frameRate,
     atlasWidth: parsed.atlasWidth,
     atlasHeight: parsed.atlasHeight,
-    atlas: bitmap.bitmap,
+    atlas,
     materialWarnings: parsed.materialWarnings,
     sequences: parsed.sequences,
   };
+}
+
+/**
+ * 图集要么已经是 Worker 传过来的 ImageBitmap（此时主线程不接触整图 RGBA），
+ * 要么是需要主线程位图化的 RGBA buffer。
+ */
+async function resolveAtlasBitmap(
+  response: WorkerSuccessMessage,
+): Promise<ImageBitmap> {
+  if (response.atlasBitmap) return response.atlasBitmap;
+  if (!response.atlasBuffer) {
+    throw new Error("解析 Worker 未返回图集数据");
+  }
+  const pixels = decodeAtlasPixels(response.descriptor, response.atlasBuffer);
+  const prepared = await atlasPixelsToBitmap(pixels);
+  return prepared.bitmap;
 }
 
 async function handleWorkerMessage(
@@ -178,14 +199,13 @@ async function handleWorkerMessage(
   }
 
   try {
-    const parsed = decodeParsedSwfBundle(
+    const parsed = decodeSwfBundleFrames(
       response.descriptor,
       response.floatBuffer,
       response.uintBuffer,
-      response.atlasBuffer,
     );
-    const bitmap = await atlasPixelsToBitmap(parsed.atlasPixels);
-    settleRequest(request, "resolve", toClipData(parsed, bitmap));
+    const atlas = await resolveAtlasBitmap(response);
+    settleRequest(request, "resolve", toClipData(parsed, atlas));
   } catch (error) {
     settleRequest(request, "reject", asError(error, "解析结果处理失败"));
   }

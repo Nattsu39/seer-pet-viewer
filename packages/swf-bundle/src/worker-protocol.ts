@@ -4,6 +4,7 @@ import type {
   SwfSequence,
   SwfSubMesh,
 } from "./types.js";
+import type { AtlasPixels } from "./atlas.js";
 
 /** A range measured in elements of one of the packed typed-array buffers. */
 export interface PackedArrayRange {
@@ -38,16 +39,31 @@ export interface PackedSwfBundleDescriptor {
   frameRate: number;
   atlasWidth: number;
   atlasHeight: number;
-  atlas: PackedByteRange;
+  /** 仅当图集以 RGBA buffer 形式传输时存在；Worker 内已位图化时省略 */
+  atlas?: PackedByteRange;
   materialWarnings: string[];
   sequences: PackedSwfSequenceDescriptor[];
 }
 
-export interface EncodedParsedSwfBundle {
+export interface EncodedSwfBundleFrames {
   descriptor: PackedSwfBundleDescriptor;
   floatBuffer: ArrayBuffer;
   uintBuffer: ArrayBuffer;
+}
+
+export interface EncodedParsedSwfBundle extends EncodedSwfBundleFrames {
   atlasBuffer: ArrayBuffer;
+}
+
+/** 帧数据以外的元信息（图集单独传输） */
+export interface DecodedSwfBundleFrames {
+  petId: number;
+  name: string;
+  frameRate: number;
+  atlasWidth: number;
+  atlasHeight: number;
+  materialWarnings: string[];
+  sequences: SwfSequence[];
 }
 
 function cloneSubMeshes(subMeshes: SwfSubMesh[]): SwfSubMesh[] {
@@ -139,12 +155,12 @@ function encodeFrame(
 
 /**
  * Pack all frame vertex data into exactly two contiguous transfer buffers.
- * The atlas gets its own buffer so that the three response transferables have
- * stable, independent ownership boundaries.
+ * The atlas is not part of them: it either travels as its own buffer
+ * (`encodeParsedSwfBundle`) or as an ImageBitmap built inside the worker.
  */
-export function encodeParsedSwfBundle(
+export function encodeSwfBundleFrames(
   data: ParsedSwfBundle,
-): EncodedParsedSwfBundle {
+): EncodedSwfBundleFrames {
   const floats = new Float32Array(getFloatLength(data.sequences));
   const uints = new Uint16Array(getUintLength(data.sequences));
   const floatOffset = { value: 0 };
@@ -169,6 +185,30 @@ export function encodeParsedSwfBundle(
     sequences.push({ name: sequence.name, frames });
   }
 
+  return {
+    descriptor: {
+      petId: data.petId,
+      name: data.name,
+      frameRate: data.frameRate,
+      atlasWidth: data.atlasWidth,
+      atlasHeight: data.atlasHeight,
+      materialWarnings: data.materialWarnings.map((warning) => warning),
+      sequences,
+    },
+    floatBuffer: floats.buffer,
+    uintBuffer: uints.buffer,
+  };
+}
+
+/**
+ * 帧数据 + 图集 RGBA buffer。图集获得独立 buffer，
+ * 因此三个 transferable 的所有权边界互不重叠。
+ * 已经是独占 buffer 的图集视图直接交出所有权，不再复制整图。
+ */
+export function encodeParsedSwfBundle(
+  data: ParsedSwfBundle,
+): EncodedParsedSwfBundle {
+  const frames = encodeSwfBundleFrames(data);
   const rgba = data.atlasPixels.rgba;
   const atlasBuffer =
     rgba.buffer instanceof ArrayBuffer &&
@@ -182,18 +222,11 @@ export function encodeParsedSwfBundle(
         })();
 
   return {
+    ...frames,
     descriptor: {
-      petId: data.petId,
-      name: data.name,
-      frameRate: data.frameRate,
-      atlasWidth: data.atlasWidth,
-      atlasHeight: data.atlasHeight,
+      ...frames.descriptor,
       atlas: { byteOffset: 0, byteLength: rgba.byteLength },
-      materialWarnings: data.materialWarnings.map((warning) => warning),
-      sequences,
     },
-    floatBuffer: floats.buffer,
-    uintBuffer: uints.buffer,
     atlasBuffer,
   };
 }
@@ -286,18 +319,16 @@ function decodeFrame(
 }
 
 /**
- * Rehydrate a packed response using views over the transferred buffers.
+ * Rehydrate frame data using views over the transferred buffers.
  * No frame typed-array data is copied during decoding.
  */
-export function decodeParsedSwfBundle(
+export function decodeSwfBundleFrames(
   descriptor: PackedSwfBundleDescriptor,
   floatBuffer: ArrayBuffer,
   uintBuffer: ArrayBuffer,
-  atlasBuffer: ArrayBuffer,
-): ParsedSwfBundle {
+): DecodedSwfBundleFrames {
   const floats = new Float32Array(floatBuffer);
   const uints = new Uint16Array(uintBuffer);
-  assertByteRange(descriptor.atlas, atlasBuffer.byteLength);
 
   return {
     petId: descriptor.petId,
@@ -305,21 +336,43 @@ export function decodeParsedSwfBundle(
     frameRate: descriptor.frameRate,
     atlasWidth: descriptor.atlasWidth,
     atlasHeight: descriptor.atlasHeight,
-    atlasPixels: {
-      width: descriptor.atlasWidth,
-      height: descriptor.atlasHeight,
-      rgba: new Uint8ClampedArray(
-        atlasBuffer,
-        descriptor.atlas.byteOffset,
-        descriptor.atlas.byteLength,
-      ),
-    },
     materialWarnings: descriptor.materialWarnings,
     sequences: descriptor.sequences.map((sequence) => ({
       name: sequence.name,
-      frames: sequence.frames.map((frame) =>
-        decodeFrame(frame, floats, uints),
-      ),
+      frames: sequence.frames.map((frame) => decodeFrame(frame, floats, uints)),
     })),
+  };
+}
+
+/** 图集以 RGBA buffer 传输时，按 descriptor 范围建立零拷贝视图 */
+export function decodeAtlasPixels(
+  descriptor: PackedSwfBundleDescriptor,
+  atlasBuffer: ArrayBuffer,
+): AtlasPixels {
+  if (!descriptor.atlas) {
+    throw new Error("descriptor 缺少 atlas 范围");
+  }
+  assertByteRange(descriptor.atlas, atlasBuffer.byteLength);
+  return {
+    width: descriptor.atlasWidth,
+    height: descriptor.atlasHeight,
+    rgba: new Uint8ClampedArray(
+      atlasBuffer,
+      descriptor.atlas.byteOffset,
+      descriptor.atlas.byteLength,
+    ),
+  };
+}
+
+export function decodeParsedSwfBundle(
+  descriptor: PackedSwfBundleDescriptor,
+  floatBuffer: ArrayBuffer,
+  uintBuffer: ArrayBuffer,
+  atlasBuffer: ArrayBuffer,
+): ParsedSwfBundle {
+  const atlasPixels = decodeAtlasPixels(descriptor, atlasBuffer);
+  return {
+    ...decodeSwfBundleFrames(descriptor, floatBuffer, uintBuffer),
+    atlasPixels,
   };
 }

@@ -6,7 +6,11 @@ import {
   type MonoBehaviour,
   type Texture2D,
 } from "@arkntools/unity-js";
-import { atlasPixelsToBitmap, flipAtlasY, type AtlasPixels } from "./atlas.js";
+import {
+  atlasPixelsToBitmap,
+  flipAtlasYInPlace,
+  type AtlasPixels,
+} from "./atlas.js";
 import { buildFrameMesh } from "./mesh.js";
 import { MaterialResolver, NORMAL_MATERIAL } from "./material.js";
 import { extractPetId, isSwfAtlasReleased } from "./clip-data.js";
@@ -51,11 +55,25 @@ function loadAtlasPixels(bundle: AssetFile): AtlasPixels {
     height: number;
     image: { data: Uint8Array };
   };
-  const raw = new Uint8ClampedArray(tex.image.data);
+  // 8192 图集单份 RGBA 为 256 MiB，任何一次整图复制都会直接抬高解析峰值。
+  // 因此这里对 unity-js 的解码缓冲做零拷贝视图并就地翻转；
+  // 该缓冲随 bundle 对象一起被丢弃，之后不再有别的读者。
+  const decoded = tex.image.data;
+  const expected = tex.width * tex.height * 4;
+  if (decoded.byteLength < expected) {
+    throw new Error(
+      `图集像素数据不足：${decoded.byteLength} < ${expected}（${tex.width}×${tex.height}）`,
+    );
+  }
+  const rgba = new Uint8ClampedArray(
+    decoded.buffer,
+    decoded.byteOffset,
+    expected,
+  );
   return {
     width: tex.width,
     height: tex.height,
-    rgba: flipAtlasY(raw, tex.width, tex.height),
+    rgba: flipAtlasYInPlace(rgba, tex.width, tex.height),
   };
 }
 

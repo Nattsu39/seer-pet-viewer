@@ -167,6 +167,7 @@ async function initSwfPlayer(clip: SwfClipData, bundleBuffer?: ArrayBuffer | nul
     backgroundColor: getCanvasBackgroundColor(),
     maxTextureSize: getEffectiveSwfMaxTextureSize(),
     releaseAtlasAfterSplit: bundleBuffer != null,
+    releaseAtlasAfterUpload: bundleBuffer != null,
   });
   p.enablePan();
   p.setSequence(currentSequence.value);
