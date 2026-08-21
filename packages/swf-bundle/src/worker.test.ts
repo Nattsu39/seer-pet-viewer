@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ParsedSwfBundle } from "./types.js";
 import type { WorkerRequest } from "./worker.js";
 
@@ -59,8 +59,53 @@ beforeEach(() => {
   parseBundleCoreMock.mockResolvedValue(makeBundle());
 });
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe("SWF parser worker protocol", () => {
-  it("transfers exactly the three response buffers without JSON frame arrays", async () => {
+  it("transfers the atlas as an ImageBitmap built inside the worker", async () => {
+    const bitmap = { width: 2, height: 1, close: vi.fn() };
+    const createBitmap = vi.fn(async () => bitmap);
+    vi.stubGlobal("createImageBitmap", createBitmap);
+    vi.stubGlobal(
+      "ImageData",
+      class {
+        constructor(
+          public data: Uint8ClampedArray,
+          public width: number,
+          public height: number,
+        ) {}
+      },
+    );
+    vi.resetModules();
+    await import("./worker.js");
+    const handler = workerSelf.onmessage;
+
+    await handler!({
+      data: { id: 21, buffer: new ArrayBuffer(16), fileName: "pet.bundle" },
+    } as MessageEvent<WorkerRequest>);
+
+    expect(createBitmap).toHaveBeenCalledTimes(1);
+    const [response, transfer] = workerSelf.postMessage.mock.calls[0]! as [
+      Record<string, unknown>,
+      Transferable[],
+    ];
+    expect(response.atlasBitmap).toBe(bitmap);
+    expect(response.atlasBuffer).toBeUndefined();
+    expect(transfer).toEqual([
+      response.floatBuffer,
+      response.uintBuffer,
+      bitmap,
+    ]);
+    // 图集 RGBA 不再随消息离开 Worker，因此 descriptor 不带 atlas 范围
+    expect(
+      (response.descriptor as { atlas?: unknown }).atlas,
+    ).toBeUndefined();
+  });
+
+  it("falls back to transferring the atlas buffer without createImageBitmap", async () => {
+    vi.stubGlobal("createImageBitmap", undefined);
     vi.resetModules();
     await import("./worker.js");
     const handler = workerSelf.onmessage;
@@ -102,5 +147,55 @@ describe("SWF parser worker protocol", () => {
     expect(Array.isArray(frame.mulColors)).toBe(false);
     expect(Array.isArray(frame.indices)).toBe(false);
     expect(JSON.stringify(response)).not.toContain('"meta"');
+  });
+
+  it("falls back to the atlas buffer when bitmap creation fails", async () => {
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(async () => {
+        throw new Error("bitmap unsupported");
+      }),
+    );
+    vi.stubGlobal(
+      "ImageData",
+      class {
+        constructor(
+          public data: Uint8ClampedArray,
+          public width: number,
+          public height: number,
+        ) {}
+      },
+    );
+    vi.resetModules();
+    await import("./worker.js");
+
+    await workerSelf.onmessage!({
+      data: { id: 31, buffer: new ArrayBuffer(16), fileName: "pet.bundle" },
+    } as MessageEvent<WorkerRequest>);
+
+    const [response, transfer] = workerSelf.postMessage.mock.calls[0]! as [
+      Record<string, unknown>,
+      Transferable[],
+    ];
+    expect(response.ok).toBe(true);
+    expect(response.atlasBitmap).toBeUndefined();
+    expect(response.atlasBuffer).toBeInstanceOf(ArrayBuffer);
+    expect(transfer).toHaveLength(3);
+  });
+
+  it("reports parse failures without transferables", async () => {
+    parseBundleCoreMock.mockRejectedValueOnce(new Error("坏 bundle"));
+    vi.resetModules();
+    await import("./worker.js");
+
+    await workerSelf.onmessage!({
+      data: { id: 41, buffer: new ArrayBuffer(8), fileName: "pet.bundle" },
+    } as MessageEvent<WorkerRequest>);
+
+    expect(workerSelf.postMessage).toHaveBeenCalledWith({
+      id: 41,
+      ok: false,
+      error: "坏 bundle",
+    });
   });
 });

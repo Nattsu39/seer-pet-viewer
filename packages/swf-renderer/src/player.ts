@@ -43,6 +43,8 @@ import { createSwfShader, updateSwfShaderResources } from "./swf-shader.js";
 import {
   destroyAtlasLayout,
   prepareAtlasTiles,
+  releaseAtlasLayoutPixels,
+  type AtlasUploader,
   type SwfAtlasLayout,
 } from "./atlas-layout.js";
 
@@ -56,6 +58,12 @@ export interface SwfPlayerOptions {
    * 预转换 swfclip 目录加载时应为 false。
    */
   releaseAtlasAfterSplit?: boolean;
+  /**
+   * 纹理上传 GPU 后释放 CPU 侧图集位图（8192 图集省约 256 MiB 常驻）。
+   * 代价：放弃 WebGL context-loss 自动恢复，remount 前需要 `ensureSwfClipAtlas()`
+   * 从 bundle 恢复图集，因此同样只在仍持有 bundle buffer 时启用。
+   */
+  releaseAtlasAfterUpload?: boolean;
 }
 
 export interface SwfCaptureOptions {
@@ -167,6 +175,12 @@ export class SwfPlayer {
       maxTextureSize,
       { releaseSource: options.releaseAtlasAfterSplit ?? false },
     );
+    if (options.releaseAtlasAfterUpload) {
+      releaseAtlasLayoutPixels(
+        this.app.renderer as unknown as AtlasUploader,
+        this.atlasLayout,
+      );
+    }
     const primaryTile = this.atlasLayout.tiles[0]!;
     this.texture = primaryTile.texture;
 
