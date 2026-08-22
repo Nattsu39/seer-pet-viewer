@@ -607,6 +607,7 @@ defineExpose({ fitView });
               <select v-model="exportFormat" :disabled="exporting">
                 <option value="webp">WebP</option>
                 <option value="gif">GIF</option>
+                <option value="png-sequence">PNG（序列帧）</option>
               </select>
             </label>
             <label class="export-field">

@@ -3,6 +3,10 @@ export {
   downloadBlob,
   buildExportFilename,
 } from "./export.js";
+export {
+  buildPngSequenceFilename,
+  exportPngSequence,
+} from "./png-sequence.js";
 export { computeExportDimensions } from "./export-size.js";
 export {
   BASE_EXPORT_CANVAS,
@@ -71,4 +75,5 @@ export type {
   ExportOptions,
   ExportProgress,
   FrameCaptureSource,
+  PngSequenceOptions,
 } from "./types.js";

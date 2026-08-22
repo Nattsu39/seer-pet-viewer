@@ -26,6 +26,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "fflate": "^0.8.3",
     "gifenc": "^1.0.3",
     "wasm-webp": "^0.1.0"
   },

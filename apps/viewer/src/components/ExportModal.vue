@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import type { ExportFormat } from "@seer/anim-export";
-import type { ExportScale } from "../composables/useAnimationExport";
+import type {
+  ExportScale,
+  ViewerExportFormat,
+} from "../composables/useAnimationExport";
 import { useVisualViewportBottomInset } from "../composables/useVisualViewportBottomInset";
 
 defineProps<{
@@ -9,7 +11,7 @@ defineProps<{
   exporting: boolean;
   exportError: string | null;
   exportProgressLabel: string;
-  exportFormat: ExportFormat;
+  exportFormat: ViewerExportFormat;
   exportScale: ExportScale;
   exportBackground: boolean;
 }>();
@@ -17,7 +19,7 @@ defineProps<{
 const emit = defineEmits<{
   close: [];
   export: [];
-  "update:exportFormat": [value: ExportFormat];
+  "update:exportFormat": [value: ViewerExportFormat];
   "update:exportScale": [value: ExportScale];
   "update:exportBackground": [value: boolean];
 }>();
@@ -68,12 +70,13 @@ const modalStyle = computed(
               @change="
                 emit(
                   'update:exportFormat',
-                  ($event.target as HTMLSelectElement).value as ExportFormat,
+                  ($event.target as HTMLSelectElement).value as ViewerExportFormat,
                 )
               "
             >
               <option value="webp">WebP</option>
               <option value="gif">GIF</option>
+              <option value="png-sequence">PNG（序列帧）</option>
             </select>
           </label>
           <label class="export-field">

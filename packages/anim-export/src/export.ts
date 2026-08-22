@@ -18,16 +18,16 @@ function mimeType(format: ExportOptions["format"]): string {
 }
 
 /** 零拷贝构造 Blob；编码器返回 subarray 时退回紧凑复制 */
-function blobFromBytes(bytes: Uint8Array, format: ExportOptions["format"]): Blob {
+export function blobFromBytes(bytes: Uint8Array, mime: string): Blob {
   const part =
     bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength
       ? (bytes.buffer as ArrayBuffer)
       : new Uint8Array(bytes);
-  return new Blob([part], { type: mimeType(format) });
+  return new Blob([part], { type: mime });
 }
 
 /** 校验捕获帧尺寸与像素长度；返回可安全转移的紧凑像素（通常零拷贝） */
-function takeFramePixels(
+export function takeFramePixels(
   frame: CapturedFrame,
   width: number,
   height: number,
@@ -53,7 +53,7 @@ function takeFramePixels(
   return copyRgbaPixels(pixels, width, height);
 }
 
-function validateCanvasSize(width: number, height: number) {
+export function validateCanvasSize(width: number, height: number) {
   if (width <= 0 || height <= 0 || width > MAX_EXPORT_SIDE || height > MAX_EXPORT_SIDE) {
     throw new Error(
       `导出尺寸过大 (${width}×${height})，请降低缩放倍数；最长边上限 ${MAX_EXPORT_SIDE}px`,
@@ -133,7 +133,7 @@ async function exportViaWorker(
   }
 
   const bytes = await client.finish(onProgress);
-  return blobFromBytes(bytes, options.format);
+  return blobFromBytes(bytes, mimeType(options.format));
 }
 
 /** 无 worker 环境的回退路径：直接复用捕获 buffer（不复制），编码逐帧释放 */
@@ -190,7 +190,7 @@ async function exportInline(
           fps,
           loop: true,
         });
-  return blobFromBytes(bytes, options.format);
+  return blobFromBytes(bytes, mimeType(options.format));
 }
 
 export function downloadBlob(blob: Blob, filename: string): void {
@@ -202,11 +202,14 @@ export function downloadBlob(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
+export function sanitizeSequenceName(sequence: string): string {
+  return sequence.replace(/[^\w-]+/g, "_");
+}
+
 export function buildExportFilename(
   petId: number,
   sequence: string,
   format: ExportOptions["format"],
 ): string {
-  const safeSeq = sequence.replace(/[^\w-]+/g, "_");
-  return `${petId}_${safeSeq}.${format}`;
+  return `${petId}_${sanitizeSequenceName(sequence)}.${format}`;
 }
