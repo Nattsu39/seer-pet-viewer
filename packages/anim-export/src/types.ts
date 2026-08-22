@@ -20,6 +20,10 @@ export interface ExportOptions extends CaptureOptions {
   fps?: number;
 }
 
+export interface PngSequenceOptions extends CaptureOptions {
+  petId: number;
+}
+
 export interface ExportProgress {
   phase: "capture" | "encode";
   done: number;
