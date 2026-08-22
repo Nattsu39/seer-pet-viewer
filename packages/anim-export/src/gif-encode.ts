@@ -1,4 +1,5 @@
 import { GIFEncoder } from "gifenc";
+import { buildGlobalGifPalette } from "./gif-palette.js";
 import { applyPalette, prequantizeForGif } from "./gifenc-safe.js";
 import type { CapturedFrame, ExportBackground } from "./types.js";
 
@@ -83,6 +84,42 @@ export function encodeGif(
       throw new Error("导出帧尺寸不一致");
     }
     encoder.addFrame(frame.pixels, i);
+  }
+  return encoder.finish();
+}
+
+/**
+ * 全流程 GIF 编码：全局调色盘 + 逐帧写入。
+ * 编码完一帧立即把 frames[i] 置空释放引用，避免全帧像素与编码输出长期共存。
+ */
+export function encodeGifFrames(
+  frames: Array<{ pixels: Uint8Array } | undefined>,
+  options: GifEncodeOptions & {
+    onFrameDone?: (done: number, total: number) => void;
+  },
+): Uint8Array {
+  const { width, height, background, onFrameDone } = options;
+  const pending = frames.filter(
+    (f): f is { pixels: Uint8Array } => f !== undefined,
+  );
+  if (!pending.length) {
+    throw new Error("未能捕获任何帧");
+  }
+  const palette = buildGlobalGifPalette(
+    pending.map((f) => f.pixels),
+    width,
+    height,
+    background,
+  );
+  const encoder = createGifStreamEncoder({ ...options, palette });
+  const total = frames.length;
+  for (let i = 0; i < total; i++) {
+    const frame = frames[i];
+    if (frame) {
+      encoder.addFrame(frame.pixels, i);
+    }
+    frames[i] = undefined;
+    onFrameDone?.(i + 1, total);
   }
   return encoder.finish();
 }
