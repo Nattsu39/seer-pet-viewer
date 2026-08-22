@@ -6,7 +6,7 @@ interface WebPConfig {
   quality: number;
 }
 
-interface WebPAnimationFrameInput {
+export interface WebPAnimationFrameInput {
   data: Uint8Array;
   duration: number;
   config?: WebPConfig;
@@ -51,7 +51,8 @@ export async function encodeAnimationWasm(
 ): Promise<Uint8Array | null> {
   const module = await getModule();
   const frameVector = new module.VectorWebPAnimationFrame();
-  for (const frame of frames) {
+  for (let i = 0; i < frames.length; i++) {
+    const frame = frames[i]!;
     const hasConfig = frame.config !== undefined;
     const config = { ...defaultWebpConfig, ...frame.config };
     config.lossless = Math.min(1, Math.max(0, config.lossless));
@@ -62,6 +63,9 @@ export async function encodeAnimationWasm(
       config,
       has_config: hasConfig,
     });
+    // push_back 已把像素拷入 WASM 堆，立即释放 JS 侧引用，
+    // 让全帧像素不会与 WASM 堆内副本长期共存
+    frames[i] = undefined as unknown as WebPAnimationFrameInput;
   }
   return module.encodeAnimation(width, height, hasAlpha, frameVector);
 }

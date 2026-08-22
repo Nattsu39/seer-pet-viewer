@@ -469,13 +469,22 @@ export class SwfPlayer {
       throw new Error("未检测到可导出的帧");
     }
 
+    const frameIndices = rendered.map((frame) => frame.index);
     const cropped = tightCropRgbaFrames(rendered);
+    // 紧裁剪完成，立即释放全画布原始帧（仅保留帧序号），避免双份全帧共存；
+    // 无可裁剪区域时 cropped 与 rendered 为同一数组，直接沿用原始帧
+    if (cropped !== rendered) {
+      for (const frame of rendered) {
+        frame.pixels = new Uint8Array(0);
+      }
+      rendered.length = 0;
+    }
 
     try {
       for (let i = 0; i < cropped.length; i++) {
         const frame = cropped[i]!;
         yield {
-          index: rendered[i]!.index,
+          index: frameIndices[i]!,
           pixels: frame.pixels,
           width: frame.width,
           height: frame.height,
