@@ -20,19 +20,41 @@ import {
   capLayoutVertexBounds,
   computeReferenceScale,
   EXPORT_PADDING,
+  planBattleViewportExport,
   planReferenceExport,
   resolveReferenceSequence,
   tightCropRgbaFrames,
 } from "@seer/anim-export/capture";
+import type {
+  BattleCaptureOptions,
+  BattleViewportLayout,
+} from "@seer/anim-export";
+import {
+  computeSpineBattleExportCamera,
+  computeSpineFixedCamera,
+  type FixedPlacementTransform,
+} from "./battle-camera.js";
 
 export interface SpinePlayerOptions {
   backgroundColor?: number;
+  /**
+   * fixed：跳过 fitToView 的全部触发点，取景完全由调用方通过
+   * `setFixedTransform()` 设定（战斗布局等绝对定位场景）。
+   */
+  mode?: "fit" | "fixed";
+  /**
+   * 画布背景透明（clear alpha 0），用于多层画布叠加的组合场景
+   * （战斗布局左右两侧各一层）；背景色由宿主容器提供。
+   */
+  transparent?: boolean;
 }
 
 export interface SpineCaptureOptions {
   sequence: string;
   scale: number;
   background: number | "transparent";
+  /** 战斗视口：以战斗布局中心为锚取景，覆盖默认的单宠参考布局（不紧裁剪） */
+  battle?: BattleCaptureOptions;
 }
 
 export interface SpineCapturedFrame {
@@ -78,6 +100,9 @@ export class SpinePlayer {
   private userZoom = 1;
   private cameraX = 0;
   private cameraY = 0;
+  private mountMode: "fit" | "fixed" = "fit";
+  private transparentBackground = false;
+  private fixedTransform: FixedPlacementTransform | null = null;
   private boundsOffset = new Vector2();
   private boundsSize = new Vector2();
   private resizeObserver: ResizeObserver | null = null;
@@ -93,6 +118,8 @@ export class SpinePlayer {
   ): Promise<void> {
     this.clip = clip;
     this.backgroundColor = options.backgroundColor ?? 0x1a1a2e;
+    this.mountMode = options.mode ?? "fit";
+    this.transparentBackground = options.transparent ?? false;
 
     this.canvas = document.createElement("canvas");
     this.canvas.style.display = "block";
@@ -148,7 +175,6 @@ export class SpinePlayer {
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(parent);
     this.resize();
-    this.fitToView();
     this.lastTime = performance.now();
     this.tick();
   }
@@ -252,28 +278,46 @@ export class SpinePlayer {
     const savedCameraY = this.cameraY;
     const savedCanvasW = this.canvas.width;
     const savedCanvasH = this.canvas.height;
+    const savedScaleX = this.skeleton.scaleX;
 
     this.exportSuspended = true;
     this.pause();
 
-    const refName = resolveReferenceSequence(this.clip.animations);
-    const refFrameTotal = this.getSequenceFrameCount(refName);
-    if (refFrameTotal <= 0) return;
+    let refScale = 1;
+    if (options.battle) {
+      // 战斗视口：锚点为战斗布局中心，不需要参考序列归一
+      if (savedSequence !== options.sequence) {
+        this.setSequence(options.sequence);
+      }
+    } else {
+      const refName = resolveReferenceSequence(this.clip.animations);
+      const refFrameTotal = this.getSequenceFrameCount(refName);
+      if (refFrameTotal <= 0) return;
 
-    if (savedSequence !== refName) {
-      this.setSequence(refName);
-    }
-    const refScale = computeReferenceScale(
-      this.computeSequenceBounds(refFrameTotal),
-    );
-
-    if (options.sequence !== refName) {
-      this.setSequence(options.sequence);
+      if (savedSequence !== refName) {
+        this.setSequence(refName);
+      }
+      // 必须在切到目标序列前步进参考序列求包围盒
+      refScale = computeReferenceScale(
+        this.computeSequenceBounds(refFrameTotal),
+      );
+      if (options.sequence !== refName) {
+        this.setSequence(options.sequence);
+      }
     }
 
     const frameTotal = this.frameCount;
-    const bounds = capLayoutVertexBounds(this.computeSequenceBounds(frameTotal));
-    const layout = planReferenceExport(bounds, refScale, options.scale);
+    let bounds = { minX: 0, minY: 0, maxX: 1, maxY: 1 };
+    let layout: { width: number; height: number };
+    let battleLayout: BattleViewportLayout | null = null;
+    if (options.battle) {
+      // 战斗视口固定设计帧尺寸，与序列包围盒无关，无需逐帧扫包围盒
+      battleLayout = planBattleViewportExport(options.battle, options.scale);
+      layout = battleLayout;
+    } else {
+      bounds = capLayoutVertexBounds(this.computeSequenceBounds(frameTotal));
+      layout = planReferenceExport(bounds, refScale, options.scale);
+    }
     const transparent = options.background === "transparent";
 
     if (transparent) {
@@ -285,12 +329,17 @@ export class SpinePlayer {
     }
 
     this.syncExportViewport(layout.width, layout.height);
-    this.applyExportCamera(
-      bounds,
-      layout.width,
-      layout.height,
-      EXPORT_PADDING,
-    );
+    if (battleLayout) {
+      this.applyBattleExportCamera(battleLayout);
+      this.skeleton.scaleX = battleLayout.pixelsPerUnitX < 0 ? -1 : 1;
+    } else {
+      this.applyExportCamera(
+        bounds,
+        layout.width,
+        layout.height,
+        EXPORT_PADDING,
+      );
+    }
 
     const rendered: {
       index: number;
@@ -317,7 +366,8 @@ export class SpinePlayer {
     }
 
     const frameIndices = rendered.map((frame) => frame.index);
-    const cropped = tightCropRgbaFrames(rendered);
+    // 战斗视口为固定设计帧，紧裁剪会破坏固定尺寸语义，跳过
+    const cropped = battleLayout ? rendered : tightCropRgbaFrames(rendered);
     // 紧裁剪完成，立即释放全画布原始帧（仅保留帧序号），避免双份全帧共存；
     // 无可裁剪区域时 cropped 与 rendered 为同一数组，直接沿用原始帧
     if (cropped !== rendered) {
@@ -344,10 +394,15 @@ export class SpinePlayer {
       this.canvas.width = savedCanvasW;
       this.canvas.height = savedCanvasH;
       this.renderer.resize(ResizeMode.Expand);
+      this.skeleton.scaleX = savedScaleX;
       this.userZoom = savedUserZoom;
       this.cameraX = savedCameraX;
       this.cameraY = savedCameraY;
-      this.updateCamera(false);
+      if (this.mountMode === "fixed" && this.fixedTransform) {
+        this.applyFixedCamera();
+      } else {
+        this.updateCamera(false);
+      }
       if (savedSequence && savedSequence !== options.sequence) {
         this.setSequence(savedSequence);
       } else {
@@ -367,6 +422,7 @@ export class SpinePlayer {
   }
 
   fitToView(): void {
+    if (this.mountMode === "fixed") return;
     this.userZoom = 1;
     this.updateCamera(true);
     this.emitViewportChange();
@@ -374,6 +430,24 @@ export class SpinePlayer {
 
   getViewportPosition(): { x: number; y: number } {
     return { x: this.cameraX, y: this.cameraY };
+  }
+
+  /**
+   * fixed 模式专用：设定内容原点的画布像素位置与像素密度
+   * （scale.x 为负表示镜像；相机各向同性，幅值以 |scale.x| 为准）。
+   */
+  setFixedTransform(
+    position: { x: number; y: number },
+    scale: { x: number; y: number },
+  ): void {
+    if (this.mountMode !== "fixed" || !this.renderer) return;
+    this.fixedTransform = {
+      position: { ...position },
+      scale: { ...scale },
+    };
+    this.skeleton.scaleX = scale.x < 0 ? -1 : 1;
+    this.skeleton.updateWorldTransform();
+    this.render();
   }
 
   setViewportPosition(x: number, y: number): void {
@@ -679,15 +753,52 @@ export class SpinePlayer {
 
   private render(): void {
     this.renderer.resize(ResizeMode.Expand);
-    this.updateCamera(false);
+    if (this.mountMode === "fixed" && this.fixedTransform) {
+      this.applyFixedCamera();
+    } else {
+      this.updateCamera(false);
+    }
 
     const gl = this.context.gl;
-    const [r, g, b, a] = hexToGlColor(this.backgroundColor);
-    gl.clearColor(r, g, b, a);
+    if (this.transparentBackground || this.renderWithAlphaClear) {
+      // premultiplied 上下文的透明清屏只能是 (0,0,0,0)；带颜色 RGB 的
+      // (r,g,b,0) 是非法预乘态，浏览器会合成出白色不透明画布
+      gl.clearColor(0, 0, 0, 0);
+    } else {
+      const [r, g, b] = hexToGlColor(this.backgroundColor);
+      gl.clearColor(r, g, b, 1);
+    }
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     this.renderer.begin();
     this.renderer.drawSkeleton(this.skeleton, this.usesPma);
     this.renderer.end();
+  }
+
+  /** fixed 模式：按当前画布尺寸重算相机（position 为 CSS 像素，pixelRatio 换算到 backing store） */
+  private applyFixedCamera(): void {
+    if (!this.renderer || !this.fixedTransform) return;
+    const clientW = this.canvas.clientWidth || this.canvas.width;
+    const pixelRatio = this.canvas.width / clientW;
+    const params = computeSpineFixedCamera(
+      this.fixedTransform,
+      this.canvas.width,
+      this.canvas.height,
+      pixelRatio,
+    );
+    const { camera } = this.renderer;
+    camera.zoom = params.zoom;
+    camera.position.x = params.x;
+    camera.position.y = params.y;
+    camera.update();
+  }
+
+  private applyBattleExportCamera(layout: BattleViewportLayout): void {
+    const params = computeSpineBattleExportCamera(layout);
+    const { camera } = this.renderer;
+    camera.zoom = params.zoom;
+    camera.position.x = params.x;
+    camera.position.y = params.y;
+    camera.update();
   }
 }

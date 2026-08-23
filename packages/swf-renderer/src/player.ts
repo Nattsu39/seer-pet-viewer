@@ -12,10 +12,16 @@ import {
 import {
   capLayoutVertexBounds,
   computeReferenceScale,
+  planBattleViewportExport,
   planReferenceExport,
   resolveReferenceSequence,
   tightCropRgbaFrames,
 } from "@seer/anim-export/capture";
+import type {
+  BattleCaptureOptions,
+  BattleViewportLayout,
+} from "@seer/anim-export";
+import { computeSwfBattleExportRootTransform } from "./battle-transform.js";
 import { readRenderTexturePixels } from "./read-render-texture-pixels.js";
 import type {
   SwfClipData,
@@ -64,6 +70,16 @@ export interface SwfPlayerOptions {
    * 从 bundle 恢复图集，因此同样只在仍持有 bundle buffer 时启用。
    */
   releaseAtlasAfterUpload?: boolean;
+  /**
+   * fixed：跳过 fitToView 的全部触发点，根变换完全由调用方通过
+   * `setFixedTransform()` 设定（战斗布局等绝对定位场景）。
+   */
+  mode?: "fit" | "fixed";
+  /**
+   * 画布背景透明（backgroundAlpha 0），用于多层画布叠加的组合场景
+   * （战斗布局左右两侧各一层）；背景色由宿主容器提供。
+   */
+  transparent?: boolean;
 }
 
 export interface SwfCaptureOptions {
@@ -72,6 +88,8 @@ export interface SwfCaptureOptions {
   background: number | "transparent";
   /** 与 pet_export.py RENDER_FX_LAYERS 对应，默认不渲染 add 特效层 */
   renderFxLayers?: boolean;
+  /** 战斗视口：以战斗布局中心为锚取景，覆盖默认的单宠参考布局（不紧裁剪） */
+  battle?: BattleCaptureOptions;
 }
 
 export interface SwfCapturedFrame {
@@ -122,6 +140,13 @@ export class SwfPlayer {
   private bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
   private fitScale = 1;
   private userZoom = 1;
+  private mountMode: "fit" | "fixed" = "fit";
+  private transparentBackground = false;
+  /**
+   * Pixi 的 resizeTo 只监听 window resize；宿主元素自身尺寸变化
+   * （如战斗布局缩放 stage 盒子）需要自行观察并触发 app.resize()
+   */
+  private hostResizeObserver: ResizeObserver | null = null;
   private onFrameChange?: (frame: number, total: number) => void;
   private onViewportChange?: (state: {
     x: number;
@@ -138,7 +163,7 @@ export class SwfPlayer {
     }
   };
   private readonly handleRendererResize = (): void => {
-    this.fitToView();
+    if (this.mountMode !== "fixed") this.fitToView();
     this.syncGrabTextureToRenderer();
   };
 
@@ -149,11 +174,18 @@ export class SwfPlayer {
   ): Promise<void> {
     this.clip = clip;
     this.tint = options.tint ?? [1, 1, 1, 1];
+    this.mountMode = options.mode ?? "fit";
+    this.transparentBackground = options.transparent ?? false;
 
     this.app = new Application();
     await this.app.init({
       resizeTo: parent,
-      background: options.backgroundColor ?? 0x1a1a2e,
+      // premultiplied 上下文下清屏色必须是 (0,0,0,0)：带主题色 RGB 的 (r,g,b,0)
+      // 是非法预乘态，浏览器会合成出白色不透明画布，盖住下层内容
+      background: options.transparent
+        ? 0x000000
+        : (options.backgroundColor ?? 0x1a1a2e),
+      backgroundAlpha: options.transparent ? 0 : 1,
       antialias: true,
       preferWebGLVersion: 2,
       resolution: window.devicePixelRatio || 1,
@@ -161,6 +193,8 @@ export class SwfPlayer {
       preference: "webgl",
     });
     parent.appendChild(this.app.canvas);
+    this.hostResizeObserver = new ResizeObserver(() => this.app?.resize());
+    this.hostResizeObserver.observe(parent);
 
     // 超限图集按 MAX_TEXTURE_SIZE 分块上传，保留全分辨率
     const gl = (this.app.renderer as WebGLRenderer).gl;
@@ -289,6 +323,8 @@ export class SwfPlayer {
     }
     destroyAtlasLayout(this.atlasLayout);
     this.atlasLayout = null;
+    this.hostResizeObserver?.disconnect();
+    this.hostResizeObserver = null;
     if (this.app) {
       this.app.ticker.remove(this.handleTick);
       this.app.renderer.off("resize", this.handleRendererResize);
@@ -312,6 +348,9 @@ export class SwfPlayer {
 
   setBackgroundColor(color: number): void {
     if (!this.app?.renderer) return;
+    // 透明画布不接受背景色：v8 的 background.color setter 会把 alpha 重置为 1，
+    // 且非零 RGB 配零 alpha 会破坏 (0,0,0,0) 的合法预乘清屏
+    if (this.transparentBackground) return;
     this.app.renderer.background.color = color;
   }
 
@@ -389,19 +428,30 @@ export class SwfPlayer {
       this.setSequence(options.sequence);
     }
 
-    const refName = resolveReferenceSequence(
-      this.clip.sequences.map((s) => s.name),
-    );
-    const refSeq = this.clip.sequences.find((s) => s.name === refName);
-    if (!refSeq?.frames.length) return;
-
     const renderFxLayers = options.renderFxLayers ?? true;
 
-    const refScale = computeReferenceScale(computeSequenceVertexBounds(refSeq));
-    const layoutBounds = capLayoutVertexBounds(
-      computeSequenceVertexBounds(seq),
-    );
-    const layout = planReferenceExport(layoutBounds, refScale, options.scale);
+    let layoutBounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+    let layout: { width: number; height: number; pixelsPerUnitX: number; pixelsPerUnitY: number };
+    let battleLayout: BattleViewportLayout | null = null;
+    if (options.battle) {
+      // 战斗视口固定设计帧尺寸，与序列包围盒无关，无需计算顶点包围盒
+      battleLayout = planBattleViewportExport(options.battle, options.scale);
+      layout = battleLayout;
+    } else {
+      const refName = resolveReferenceSequence(
+        this.clip.sequences.map((s) => s.name),
+      );
+      const refSeq = this.clip.sequences.find((s) => s.name === refName);
+      if (!refSeq?.frames.length) return;
+
+      const refScale = computeReferenceScale(
+        computeSequenceVertexBounds(refSeq),
+      );
+      layoutBounds = capLayoutVertexBounds(
+        computeSequenceVertexBounds(seq),
+      );
+      layout = planReferenceExport(layoutBounds, refScale, options.scale);
+    }
     const transparent = options.background === "transparent";
 
     const exportRT = RenderTexture.create({
@@ -429,13 +479,19 @@ export class SwfPlayer {
       for (let i = 0; i < seq.frames.length; i++) {
         try {
           this.frameIndex = i;
-          this.applyExportTransform(
-            layoutBounds,
-            layout.width,
-            layout.height,
-            layout.pixelsPerUnitX,
-            layout.pixelsPerUnitY,
-          );
+          if (battleLayout) {
+            const t = computeSwfBattleExportRootTransform(battleLayout);
+            this.root.scale.set(t.scaleX, t.scaleY);
+            this.root.position.set(t.x, t.y);
+          } else {
+            this.applyExportTransform(
+              layoutBounds,
+              layout.width,
+              layout.height,
+              layout.pixelsPerUnitX,
+              layout.pixelsPerUnitY,
+            );
+          }
           this.renderCurrentFrameMeshes({ renderFxLayers });
           this.app.renderer.render({
             container: this.app.stage,
@@ -470,7 +526,8 @@ export class SwfPlayer {
     }
 
     const frameIndices = rendered.map((frame) => frame.index);
-    const cropped = tightCropRgbaFrames(rendered);
+    // 战斗视口为固定设计帧，紧裁剪会破坏固定尺寸语义，跳过
+    const cropped = battleLayout ? rendered : tightCropRgbaFrames(rendered);
     // 紧裁剪完成，立即释放全画布原始帧（仅保留帧序号），避免双份全帧共存；
     // 无可裁剪区域时 cropped 与 rendered 为同一数组，直接沿用原始帧
     if (cropped !== rendered) {
@@ -505,7 +562,11 @@ export class SwfPlayer {
       this.userZoom = savedUserZoom;
       this.root.position.set(savedRootPos.x, savedRootPos.y);
       this.root.scale.set(savedRootScale.x, savedRootScale.y);
-      this.applyTransform(false);
+      if (this.mountMode === "fixed") {
+        this.app?.render();
+      } else {
+        this.applyTransform(false);
+      }
       if (wasPlaying) this.play();
     }
   }
@@ -547,7 +608,7 @@ export class SwfPlayer {
   }
 
   fitToView(): void {
-    if (!this.app) return;
+    if (this.mountMode === "fixed" || !this.app) return;
     this.userZoom = 1;
     const pad = 40;
     const bw = this.bounds.maxX - this.bounds.minX || 1;
@@ -566,6 +627,20 @@ export class SwfPlayer {
       x: (this.app.screen.width / 2 - this.root.x) / scale,
       y: (this.root.y - this.app.screen.height / 2) / scale,
     };
+  }
+
+  /**
+   * fixed 模式专用：直接设定根变换（画布像素坐标）。
+   * scale.y 需为负值以维持预览的 y 翻转约定（顶点 y 向上、画布原点左上）。
+   */
+  setFixedTransform(
+    position: { x: number; y: number },
+    scale: { x: number; y: number },
+  ): void {
+    if (this.mountMode !== "fixed" || !this.app) return;
+    this.root.position.set(position.x, position.y);
+    this.root.scale.set(scale.x, scale.y);
+    this.app.render();
   }
 
   setViewportPosition(x: number, y: number): void {

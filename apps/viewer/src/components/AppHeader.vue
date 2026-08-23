@@ -6,6 +6,8 @@ import { lockBodyScroll, unlockBodyScroll } from "../lib/bodyScrollLock";
 defineProps<{
   petLoaded: boolean;
   sharedMaterialBundleName: string;
+  /** 战斗布局模式下工具栏位置无效果，禁用切换按钮 */
+  toolbarToggleDisabled?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -120,7 +122,12 @@ onUnmounted(() => {
         v-if="!isMobile"
         type="button"
         class="header-btn btn-setting"
-        :title="`切换工具栏位置（当前：${toolbarLabel}，下次：${nextToolbarLabel}）`"
+        :disabled="toolbarToggleDisabled"
+        :title="
+          toolbarToggleDisabled
+            ? '工具栏位置仅单宠查看模式可用'
+            : `切换工具栏位置（当前：${toolbarLabel}，下次：${nextToolbarLabel}）`
+        "
         @click="emit('toggleToolbarPosition')"
       >
         工具栏：{{ toolbarLabel }}

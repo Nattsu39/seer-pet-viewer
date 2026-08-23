@@ -107,6 +107,21 @@ button:hover {
   border-color: var(--accent);
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+button:disabled:hover {
+  border-color: var(--border);
+}
+
+select:disabled,
+input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 button.primary {
   background: var(--accent);
   border-color: var(--accent);

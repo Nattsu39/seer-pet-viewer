@@ -33,6 +33,11 @@ export type {
   RgbaFrame,
   VertexBounds,
 } from "./export-dimensions.js";
+export { planBattleViewportExport } from "./battle-viewport.js";
+export type {
+  BattleViewportLayout,
+  BattleViewportOptions,
+} from "./battle-viewport.js";
 export {
   computeFittedCanvasLayout,
   finalizeExportPixels,

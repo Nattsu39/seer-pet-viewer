@@ -7,10 +7,12 @@
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
     "typecheck": "vue-tsc -b --noEmit",
+    "test": "vitest run",
     "preview": "vite preview"
   },
   "dependencies": {
     "@seer/anim-export": "workspace:*",
+    "@seer/battle-layout": "workspace:*",
     "@seer/spine-bundle": "workspace:*",
     "@seer/spine-renderer": "workspace:*",
     "@seer/swf-bundle": "workspace:*",
@@ -21,8 +23,10 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.2.4",
+    "happy-dom": "^17.6.3",
     "typescript": "^5.8.3",
     "vite": "^6.3.5",
+    "vitest": "^3.2.4",
     "vue-tsc": "^2.2.10"
   }
 }
