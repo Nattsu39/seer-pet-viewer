@@ -20,6 +20,9 @@ importers:
       '@seer/anim-export':
         specifier: workspace:*
         version: link:../../packages/anim-export
+      '@seer/battle-layout':
+        specifier: workspace:*
+        version: link:../../packages/battle-layout
       '@seer/spine-bundle':
         specifier: workspace:*
         version: link:../../packages/spine-bundle
@@ -45,18 +48,27 @@ importers:
       '@vitejs/plugin-vue':
         specifier: ^5.2.4
         version: 5.2.4(vite@6.4.3)(vue@3.5.39(typescript@5.9.3))
+      happy-dom:
+        specifier: ^17.6.3
+        version: 17.6.3
       typescript:
         specifier: ^5.8.3
         version: 5.9.3
       vite:
         specifier: ^6.3.5
         version: 6.4.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.6(happy-dom@17.6.3)
       vue-tsc:
         specifier: ^2.2.10
         version: 2.2.12(typescript@5.9.3)
 
   packages/anim-export:
     dependencies:
+      '@seer/battle-layout':
+        specifier: workspace:*
+        version: link:../battle-layout
       fflate:
         specifier: ^0.8.3
         version: 0.8.3
@@ -66,6 +78,15 @@ importers:
       wasm-webp:
         specifier: ^0.1.0
         version: 0.1.0
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.6(happy-dom@17.6.3)
+
+  packages/battle-layout:
     devDependencies:
       typescript:
         specifier: ^5.8.3
@@ -114,6 +135,9 @@ importers:
       typescript:
         specifier: ^5.8.3
         version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.6(happy-dom@17.6.3)
 
   packages/swf-bundle:
     dependencies:
