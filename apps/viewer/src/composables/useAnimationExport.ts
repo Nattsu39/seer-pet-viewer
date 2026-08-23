@@ -1,5 +1,6 @@
 import { ref } from "vue";
 import type {
+  BattleCaptureOptions,
   ExportFormat,
   ExportProgress,
   FrameCaptureSource,
@@ -21,6 +22,7 @@ export function useAnimationExport() {
     petId: number,
     sequence: string,
     backgroundColor: number,
+    battle?: BattleCaptureOptions,
   ): Promise<void> {
     if (exporting.value) return;
     exporting.value = true;
@@ -43,6 +45,7 @@ export function useAnimationExport() {
             sequence,
             scale: exportScale.value,
             background,
+            battle,
           },
           (p: ExportProgress) => {
             exportProgress.value = p;
@@ -59,6 +62,7 @@ export function useAnimationExport() {
             scale: exportScale.value,
             background,
             format,
+            battle,
           },
           (p: ExportProgress) => {
             exportProgress.value = p;

@@ -30,6 +30,16 @@ export type {
   VertexBounds,
 } from "./export-dimensions.js";
 export {
+  planBattleViewportExport,
+} from "./battle-viewport.js";
+export type {
+  BattleViewportLayout,
+  BattleViewportOptions,
+} from "./battle-viewport.js";
+export type {
+  BattleCaptureOptions,
+} from "./types.js";
+export {
   computeTightExportSize,
   cropRgbaPixels,
   findAlphaBounds,

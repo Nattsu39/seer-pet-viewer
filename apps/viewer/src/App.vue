@@ -22,6 +22,11 @@ import {
 const PetViewer = defineAsyncComponent(
   () => import("./components/PetViewer.vue"),
 );
+const BattleLayoutView = defineAsyncComponent(
+  () => import("./components/BattleLayoutView.vue"),
+);
+
+const viewMode = ref<"single" | "battle">("single");
 
 const {
   effectiveToolbarPosition,
@@ -169,6 +174,7 @@ function canNamedRemoteFailureDownload(): boolean {
     <AppHeader
       :pet-loaded="!!pet"
       :shared-material-bundle-name="sharedMaterialBundleName"
+      :toolbar-toggle-disabled="viewMode === 'battle'"
       @cycle-theme="cycleTheme"
       @toggle-toolbar-position="toggleToolbarPosition"
       @file-input="onFileInput"
@@ -177,8 +183,38 @@ function canNamedRemoteFailureDownload(): boolean {
       @reset="reset"
     />
 
+    <div class="mode-switch" role="tablist" aria-label="查看模式">
+      <button
+        type="button"
+        role="tab"
+        :aria-selected="viewMode === 'single'"
+        :class="{ active: viewMode === 'single' }"
+        @click="viewMode = 'single'"
+      >
+        单宠查看
+      </button>
+      <button
+        type="button"
+        role="tab"
+        :aria-selected="viewMode === 'battle'"
+        :class="{ active: viewMode === 'battle' }"
+        @click="viewMode = 'battle'"
+      >
+        战斗布局
+      </button>
+    </div>
+
+    <template v-if="viewMode === 'battle'">
+      <Suspense>
+        <BattleLayoutView class="viewer-shell" />
+        <template #fallback>
+          <div class="loading-viewer">正在初始化战斗布局…</div>
+        </template>
+      </Suspense>
+    </template>
+
     <div
-      v-if="!pet"
+      v-else-if="!pet"
       class="dropzone"
       :class="{ dragover: dragOver }"
       @dragover.prevent="dragOver = true"
@@ -307,6 +343,30 @@ function canNamedRemoteFailureDownload(): boolean {
   height: 100svh;
   overflow: hidden;
   min-height: 0;
+}
+
+.mode-switch {
+  display: flex;
+  gap: 6px;
+  padding: 8px 20px 0;
+  flex-shrink: 0;
+}
+
+.mode-switch button {
+  padding: 6px 16px;
+  min-height: 34px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.mode-switch button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .dropzone {

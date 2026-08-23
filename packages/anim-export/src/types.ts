@@ -1,11 +1,17 @@
+import type { BattleViewportOptions } from "./battle-viewport.js";
+
 export type ExportFormat = "gif" | "webp";
 
 export type ExportBackground = number | "transparent";
+
+/** 战斗视口捕获参数（与 planBattleViewportExport 的选项为同一定义） */
+export type BattleCaptureOptions = BattleViewportOptions;
 
 export interface CaptureOptions {
   sequence: string;
   scale: number;
   background: ExportBackground;
+  battle?: BattleCaptureOptions;
 }
 
 export interface CapturedFrame {
