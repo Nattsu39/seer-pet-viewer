@@ -18,11 +18,22 @@ export const DEFAULT_BATTLE_PX_PER_UNIT = 100;
 /** 宠物容器（场景 Root/SWFPets）世界空间 y 偏移的默认值，场景数据回填前取 0 */
 export const DEFAULT_BATTLE_CONTAINER_WORLD_Y = 0;
 
+/**
+ * spine 动画（骨架场景）世界空间 y 偏移的默认值；
+ * 客户端实测 spine 默认场景偏移为 -3.47（而非 0），
+ * 用于 kind="spine" 且未显式指定 containerWorldY 的布局。
+ */
+export const DEFAULT_SPINE_SCENE_WORLD_Y = -3.47;
+
+export type BattleAnimKind = "swf" | "spine";
+
 export interface BattleLayoutOptions {
   /** 单位像素比；省略时使用内置默认 */
   pxPerUnit?: number;
-  /** 宠物容器在世界空间的 y 偏移（世界单位）；省略为 0 */
+  /** 场景容器 y 偏移的手动微调值（世界单位），叠加在 kind 基准默认之上；省略为 0 */
   containerWorldY?: number;
+  /** 动画类型；决定容器 y 偏移的基准默认（spine=-3.47，swf/省略=0） */
+  kind?: BattleAnimKind;
 }
 
 export interface BattlePetPlacement {
@@ -51,6 +62,19 @@ function resolvePxPerUnit(pxPerUnit: number | undefined): number {
 }
 
 /**
+ * 解析容器世界 y 偏移：先按动画类型取基准默认（spine=-3.47，其余 0），
+ * 再叠加手动微调 containerWorldY。这样 spine 的默认偏移隐式生效，
+ * 前端微调输入仍从 0 起（0 表示不额外调整）。
+ */
+function resolveContainerWorldY(options: BattleLayoutOptions): number {
+  const base =
+    options.kind === "spine"
+      ? DEFAULT_SPINE_SCENE_WORLD_Y
+      : DEFAULT_BATTLE_CONTAINER_WORLD_Y;
+  return base + (options.containerWorldY ?? 0);
+}
+
+/**
  * 计算一侧精灵的战斗布局。内容空间约定 y 向上、原点为精灵局部原点
  * （客户端 SetLocalXY 的 ±4 锚点即挂在原点上）。
  */
@@ -59,8 +83,7 @@ export function computeBattlePetPlacement(
   options: BattleLayoutOptions = {},
 ): BattlePetPlacement {
   const pxPerUnit = resolvePxPerUnit(options.pxPerUnit);
-  const containerWorldY =
-    options.containerWorldY ?? DEFAULT_BATTLE_CONTAINER_WORLD_Y;
+  const containerWorldY = resolveContainerWorldY(options);
   const anchorX = side === "left" ? -BATTLE_ANCHOR_UNITS : BATTLE_ANCHOR_UNITS;
   const mirror = side === "right" ? -1 : 1;
   return {
