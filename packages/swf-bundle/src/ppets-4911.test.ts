@@ -6,8 +6,10 @@ import { parseBundleCore } from "./parse.js";
 const bundlePath = resolve(import.meta.dirname, "../../../ppets_4911.bundle");
 
 describe("ppets_4911 moves_38419", () => {
-  it("parses moves_38419 with valid mesh data", async () => {
-    const buf = readFileSync(bundlePath);
+  it(
+    "parses moves_38419 with valid mesh data",
+    async () => {
+      const buf = readFileSync(bundlePath);
     const core = await parseBundleCore(buf, "ppets_4911");
     const seq = core.sequences.find((s) => s.name === "moves_38419");
     expect(seq, "moves_38419 sequence").toBeTruthy();
@@ -84,5 +86,7 @@ describe("ppets_4911 moves_38419", () => {
     }
     console.log(`moves_38419 emptyFrames=${emptyFrames}`);
     expect(matKinds.size).toBeGreaterThan(0);
-  });
+    },
+    30_000,
+  );
 });

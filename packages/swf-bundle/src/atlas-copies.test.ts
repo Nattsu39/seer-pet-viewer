@@ -324,7 +324,7 @@ describe("parseBundleCore atlas pixels", () => {
   const hasFixture = existsSync(bundlePath);
 
   it.skipIf(!hasFixture)(
-    "views the decoded texture buffer instead of copying it",
+    "allocates at most one full-size atlas buffer (strip decode output)",
     async () => {
       const buf = readFileSync(bundlePath);
       const data = buf.buffer.slice(
@@ -355,19 +355,20 @@ describe("parseBundleCore atlas pixels", () => {
       }
 
       const atlasBytes = core.atlasWidth * core.atlasHeight * 4;
-      expect(core.atlasPixels.rgba.byteLength).toBe(atlasBytes);
-      expect(core.atlasPixels.rgba.byteOffset).toBe(0);
-      expect(core.atlasPixels.rgba.buffer.byteLength).toBe(atlasBytes);
-      expect(Array.from(core.atlasPixels.rgba.subarray(0, 4096))).toEqual(
+      expect(core.atlasPixels!.rgba.byteLength).toBe(atlasBytes);
+      expect(core.atlasPixels!.rgba.byteOffset).toBe(0);
+      expect(core.atlasPixels!.rgba.buffer.byteLength).toBe(atlasBytes);
+      expect(Array.from(core.atlasPixels!.rgba.subarray(0, 4096))).toEqual(
         Array.from(expected.subarray(0, 4096)),
       );
       expect(
-        Array.from(core.atlasPixels.rgba.subarray(atlasBytes - 4096)),
+        Array.from(core.atlasPixels!.rgba.subarray(atlasBytes - 4096)),
       ).toEqual(Array.from(expected.subarray(atlasBytes - 4096)));
 
-      for (const size of tracker.sizes) {
-        expect(size).toBeLessThan(atlasBytes);
-      }
+      // 条带解码：整图级分配只允许输出这一份；其余都必须是条带级小分配
+      // （RGBA32 直出路径则完全不分配）
+      const fullSize = tracker.sizes.filter((size) => size >= atlasBytes);
+      expect(fullSize.length, "整图级分配至多一份（解码输出）").toBeLessThanOrEqual(1);
     },
   );
 });

@@ -1,4 +1,10 @@
-export { parseBundleInWorker, terminateParserWorker } from "./worker-client.js";
+export {
+  parseBundleInWorker,
+  reparseSwfClipInWorker,
+  extractAtlasBitmapInWorker,
+  parserWorkerAvailable,
+  terminateParserWorker,
+} from "./worker-client.js";
 export {
   loadSwfClipPackage,
   swfClipDataToJson,

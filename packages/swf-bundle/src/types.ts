@@ -75,7 +75,8 @@ export interface ParsedSwfBundle {
   frameRate: number;
   atlasWidth: number;
   atlasHeight: number;
-  atlasPixels: import("./atlas.js").AtlasPixels;
+  /** 图集仍存活的重解析（needAtlas:false）时省略 */
+  atlasPixels?: import("./atlas.js").AtlasPixels;
   sequences: SwfSequence[];
   materialWarnings: string[];
 }
