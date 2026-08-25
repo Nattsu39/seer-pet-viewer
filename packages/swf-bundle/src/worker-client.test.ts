@@ -339,3 +339,84 @@ describe("parseBundleInWorker lifecycle", () => {
     expect(parser.terminated).toBe(true);
   });
 });
+
+describe("reparseSwfClipInWorker / extractAtlasBitmapInWorker", () => {
+  function framesMessage(id: number) {
+    const bundle = makeBundle();
+    const { atlasPixels: _atlasPixels, ...framesOnly } = bundle;
+    const encoded = encodeSwfBundleFrames(framesOnly);
+    return {
+      id,
+      ok: true,
+      descriptor: encoded.descriptor,
+      floatBuffer: encoded.floatBuffer,
+      uintBuffer: encoded.uintBuffer,
+    };
+  }
+
+  it("keeps the alive atlas and skips atlas payload when reusing it", async () => {
+    const atlas = { width: 2, height: 1 } as ImageBitmap;
+    const result = client.reparseSwfClipInWorker(
+      requestBuffer(),
+      "pet",
+      undefined,
+      atlas,
+    );
+    const parser = FakeWorker.instances[0]!;
+    const request = parser.messages[0]!.data as { mode?: string };
+    expect(request.mode).toBe("frames");
+    parser.emitMessage(framesMessage(1));
+
+    const clip = await result;
+    expect(clip.atlas).toBe(atlas);
+    expect(testState.atlasPixelsToBitmap).not.toHaveBeenCalled();
+    expect(parser.terminated).toBe(true);
+  });
+
+  it("requests full mode and adopts the redecoded atlas when released", async () => {
+    const released = { width: 0, height: 0 } as ImageBitmap;
+    const result = client.reparseSwfClipInWorker(
+      requestBuffer(),
+      "pet",
+      undefined,
+      released,
+    );
+    const parser = FakeWorker.instances[0]!;
+    const request = parser.messages[0]!.data as { mode?: string };
+    expect(request.mode).toBe("full");
+    const freshAtlas = { width: 2, height: 1 } as ImageBitmap;
+    parser.emitMessage(bitmapMessage(1, freshAtlas));
+
+    const clip = await result;
+    expect(clip.atlas).toBe(freshAtlas);
+  });
+
+  it("extractAtlasBitmapInWorker requests atlas mode and returns the bitmap", async () => {
+    const result = client.extractAtlasBitmapInWorker(requestBuffer());
+    const parser = FakeWorker.instances[0]!;
+    const request = parser.messages[0]!.data as { mode?: string };
+    expect(request.mode).toBe("atlas");
+    const atlasBitmap = { width: 2, height: 1 } as ImageBitmap;
+    parser.emitMessage({ id: 1, ok: true, atlasBitmap });
+
+    await expect(result).resolves.toBe(atlasBitmap);
+  });
+
+  it("extractAtlasBitmapInWorker falls back to the transferred RGBA buffer", async () => {
+    testState.atlasPixelsToBitmap.mockImplementation(async () => ({
+      bitmap: { width: 2, height: 1 } as ImageBitmap,
+      width: 2,
+      height: 1,
+      originalWidth: 2,
+      originalHeight: 1,
+      scaled: false,
+    }));
+    const result = client.extractAtlasBitmapInWorker(requestBuffer());
+    const parser = FakeWorker.instances[0]!;
+    parser.emitMessage(successMessage(1));
+
+    const bitmap = await result;
+    expect(bitmap).toMatchObject({ width: 2, height: 1 });
+    expect(testState.atlasPixelsToBitmap).toHaveBeenCalled();
+  });
+});

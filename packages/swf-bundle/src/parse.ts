@@ -4,13 +4,14 @@ import {
   AssetType,
   type AssetFile,
   type MonoBehaviour,
-  type Texture2D,
 } from "@arkntools/unity-js";
+import { atlasPixelsToBitmap } from "./atlas.js";
 import {
-  atlasPixelsToBitmap,
-  flipAtlasYInPlace,
-  type AtlasPixels,
-} from "./atlas.js";
+  captureAtlasTextureSource,
+  decodeAtlasFromSource,
+  decodeAtlasWhole,
+  findAtlasTexture,
+} from "./atlas-decode.js";
 import { buildFrameMesh } from "./mesh.js";
 import { MaterialResolver, NORMAL_MATERIAL } from "./material.js";
 import { extractPetId, isSwfAtlasReleased } from "./clip-data.js";
@@ -39,42 +40,29 @@ interface SwfClipAssetTree {
   Sequences: RawSequence[];
 }
 
-function loadAtlasPixels(bundle: AssetFile): AtlasPixels {
-  let texture: Texture2D | undefined;
-  for (const obj of bundle.objects) {
-    if (obj.type === AssetType.Texture2D) {
-      texture = obj as Texture2D;
-      break;
-    }
-  }
-  if (!texture) {
-    throw new Error("未找到 Texture2D 图集");
-  }
-  const tex = texture as unknown as {
-    width: number;
-    height: number;
-    image: { data: Uint8Array };
+export interface ParseBundleCoreOptions {
+  /** false 时跳过图集解码（图集仍存活的重解析用），宽高仍返回 */
+  needAtlas?: boolean;
+  /** true 时只解码图集，跳过 SwfClipAsset 与帧构建 */
+  atlasOnly?: boolean;
+}
+
+/**
+ * 解码前清空 unity-js BundleFile 对大缓冲的全部引用。
+ * Asset 对象经由 ObjectInfo→Asset.reader 持有各自文件的完整 ArrayBuffer，
+ * 而 MaterialResolver 在 addFromBundle 时就提取了纯数据、不再保留对象，
+ * 因此清空 files/objects/objectMap 后，70 MB 级的解包副本即可在解码阶段被回收，
+ * 解码期间只余纹理 rawData（64 MB）与输出整图。
+ */
+function releaseBundleBuffers(bundle: AssetFile): void {
+  const b = bundle as unknown as {
+    files?: ArrayBuffer[];
+    objects?: unknown[];
+    objectMap?: Map<unknown, unknown>;
   };
-  // 8192 图集单份 RGBA 为 256 MiB，任何一次整图复制都会直接抬高解析峰值。
-  // 因此这里对 unity-js 的解码缓冲做零拷贝视图并就地翻转；
-  // 该缓冲随 bundle 对象一起被丢弃，之后不再有别的读者。
-  const decoded = tex.image.data;
-  const expected = tex.width * tex.height * 4;
-  if (decoded.byteLength < expected) {
-    throw new Error(
-      `图集像素数据不足：${decoded.byteLength} < ${expected}（${tex.width}×${tex.height}）`,
-    );
-  }
-  const rgba = new Uint8ClampedArray(
-    decoded.buffer,
-    decoded.byteOffset,
-    expected,
-  );
-  return {
-    width: tex.width,
-    height: tex.height,
-    rgba: flipAtlasYInPlace(rgba, tex.width, tex.height),
-  };
+  if (b.files) b.files.length = 0;
+  if (b.objects) b.objects.length = 0;
+  b.objectMap?.clear();
 }
 
 function findSwfClipAsset(bundle: AssetFile): {
@@ -91,22 +79,11 @@ function findSwfClipAsset(bundle: AssetFile): {
   throw new Error("未找到 SwfClipAsset");
 }
 
-export async function parseBundleCore(
-  data: ArrayBuffer | Uint8Array,
-  fileName = "bundle",
-  resolver = new MaterialResolver(),
-): Promise<ParsedSwfBundle> {
-  const bundle = await loadAssetBundle(data);
-  for (const obj of bundle.objects) {
-    if (obj.type === AssetType.Material) {
-      resolver.addFromBundle([obj as import("@arkntools/unity-js").Material]);
-    }
-  }
-
-  const { tree } = findSwfClipAsset(bundle);
-  const atlasPixels = loadAtlasPixels(bundle);
-  const materialWarnings = resolver.drainWarnings();
-  const sequences: SwfSequence[] = tree.Sequences.map((seq) => ({
+function buildSequences(
+  tree: SwfClipAssetTree,
+  resolver: MaterialResolver,
+): SwfSequence[] {
+  return tree.Sequences.map((seq) => ({
     name: seq.Name,
     frames: seq.Frames.map((frame) => {
       const materials = frame.Materials?.length
@@ -124,19 +101,82 @@ export async function parseBundleCore(
       } satisfies SwfFrame;
     }),
   }));
+}
 
-  const petId = extractPetId(fileName, tree.Name);
+export async function parseBundleCore(
+  data: ArrayBuffer | Uint8Array,
+  fileName = "bundle",
+  resolver = new MaterialResolver(),
+  options: ParseBundleCoreOptions = {},
+): Promise<ParsedSwfBundle> {
+  const bundle = await loadAssetBundle(data);
+  for (const obj of bundle.objects) {
+    if (obj.type === AssetType.Material) {
+      resolver.addFromBundle([obj as import("@arkntools/unity-js").Material]);
+    }
+  }
+
+  // 先完成所有经由 reader 的懒读取（材质、类型树、帧数据），
+  // 再捕获纹理源并清空 bundle 缓冲，解码阶段不再有多余整包副本驻留。
+  if (options.atlasOnly) {
+    const texture = findAtlasTexture(bundle);
+    if (!texture) throw new Error("未找到 Texture2D 图集");
+    const source = captureAtlasTextureSource(texture);
+    releaseBundleBuffers(bundle);
+    return {
+      petId: extractPetId(fileName),
+      name: "",
+      frameRate: 0,
+      atlasWidth: source.width,
+      atlasHeight: source.height,
+      atlasPixels: decodeFromSource(source, texture),
+      sequences: [],
+      materialWarnings: resolver.drainWarnings(),
+    };
+  }
+
+  const { tree } = findSwfClipAsset(bundle);
+  const sequences = buildSequences(tree, resolver);
+
+  const texture = findAtlasTexture(bundle);
+  if (!texture) throw new Error("未找到 Texture2D 图集");
+  const source = captureAtlasTextureSource(texture);
+  const { width, height } = source;
+  releaseBundleBuffers(bundle);
+
+  if (options.needAtlas === false) {
+    return {
+      petId: extractPetId(fileName, tree.Name),
+      name: tree.Name,
+      frameRate: tree.FrameRate,
+      atlasWidth: width,
+      atlasHeight: height,
+      sequences,
+      materialWarnings: resolver.drainWarnings(),
+    };
+  }
 
   return {
-    petId,
+    petId: extractPetId(fileName, tree.Name),
     name: tree.Name,
     frameRate: tree.FrameRate,
-    atlasWidth: atlasPixels.width,
-    atlasHeight: atlasPixels.height,
-    atlasPixels,
+    atlasWidth: width,
+    atlasHeight: height,
+    atlasPixels: decodeFromSource(source, texture),
     sequences,
-    materialWarnings,
+    materialWarnings: resolver.drainWarnings(),
   };
+}
+
+function decodeFromSource(
+  source: ReturnType<typeof captureAtlasTextureSource>,
+  texture: NonNullable<ReturnType<typeof findAtlasTexture>>,
+): import("./atlas.js").AtlasPixels {
+  // 常见格式（BC*/ETC*/ASTC/RGBA32）全部从 source 解码，不保留 texture 引用；
+  // 仅 PVRTC/ATC 等罕见格式回退到 unity-js 整图懒解码
+  const fromSource = decodeAtlasFromSource(source);
+  if (fromSource) return fromSource;
+  return decodeAtlasWhole(texture);
 }
 
 export async function parseBundle(
@@ -145,6 +185,9 @@ export async function parseBundle(
   resolver = new MaterialResolver(),
 ): Promise<SwfClipData> {
   const core = await parseBundleCore(data, fileName, resolver);
+  if (!core.atlasPixels) {
+    throw new Error("parseBundleCore 未返回图集像素");
+  }
   const prepared = await atlasPixelsToBitmap(core.atlasPixels);
   const { atlasPixels: _pixels, materialWarnings, ...rest } = core;
   return {
@@ -156,13 +199,28 @@ export async function parseBundle(
   };
 }
 
-/** 从 bundle 仅提取图集位图（用于分块后 remount / 材质重解析） */
+/**
+ * 从 bundle 仅提取图集位图（分块渲染释放原图集后的 remount / 材质重解析用）。
+ * 浏览器环境走解析 Worker（重解码的 ~256 MB 峰值随 Worker 终止归还，
+ * 且不会在主线程留下永不回收的 wasm 线性内存）；无 Worker 环境回退主线程。
+ */
 export async function extractAtlasBitmapFromBundle(
   data: ArrayBuffer | Uint8Array,
 ): Promise<ImageBitmap> {
-  const bundle = await loadAssetBundle(data);
-  const atlasPixels = loadAtlasPixels(bundle);
-  const prepared = await atlasPixelsToBitmap(atlasPixels);
+  const { extractAtlasBitmapInWorker, parserWorkerAvailable } = await import(
+    "./worker-client.js"
+  );
+  const buffer = data instanceof ArrayBuffer ? data : data.slice().buffer;
+  if (parserWorkerAvailable()) {
+    return extractAtlasBitmapInWorker(buffer);
+  }
+  const core = await parseBundleCore(buffer, "bundle", new MaterialResolver(), {
+    atlasOnly: true,
+  });
+  if (!core.atlasPixels) {
+    throw new Error("图集提取失败");
+  }
+  const prepared = await atlasPixelsToBitmap(core.atlasPixels);
   return prepared.bitmap;
 }
 
@@ -180,16 +238,24 @@ export async function ensureSwfClipAtlas(
   clip.atlas = await extractAtlasBitmapFromBundle(bundleBuffer);
 }
 
-/** 在已加载共享材质后，复用现有图集重新解析 mesh 材质 */
+/**
+ * 在已加载共享材质后，复用现有图集重新解析 mesh 材质。
+ * UI 侧请优先使用 worker 版本 `reparseSwfClipInWorker`（不在主线程触发解码）；
+ * 本函数保留给无 Worker 环境（node 测试）与调试用途。
+ */
 export async function reparseSwfClip(
   data: ArrayBuffer | Uint8Array,
   fileName: string,
   resolver: MaterialResolver,
   atlas: ImageBitmap,
 ): Promise<SwfClipData> {
-  const core = await parseBundleCore(data, fileName, resolver);
+  const needAtlas = isSwfAtlasReleased(atlas);
+  const core = await parseBundleCore(data, fileName, resolver, { needAtlas });
   let atlasBitmap = atlas;
-  if (isSwfAtlasReleased(atlas)) {
+  if (needAtlas) {
+    if (!core.atlasPixels) {
+      throw new Error("图集恢复失败：解析未返回图集像素");
+    }
     const prepared = await atlasPixelsToBitmap(core.atlasPixels);
     atlasBitmap = prepared.bitmap;
   }
@@ -210,6 +276,7 @@ export async function loadMaterialBundle(
     (o) => o.type === AssetType.Material,
   ) as import("@arkntools/unity-js").Material[];
   resolver.addFromBundle(materials);
+  releaseBundleBuffers(bundle);
   return {
     count: materials.length,
     warnings: resolver.drainWarnings(),

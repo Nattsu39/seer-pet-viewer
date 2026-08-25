@@ -2,6 +2,7 @@ import { ref, watch } from "vue";
 import type { SwfClipData } from "@seer/swf-bundle";
 import {
   parseBundleInWorker,
+  reparseSwfClipInWorker,
   loadSwfClipPackage,
   MaterialResolver,
   SHARED_SWF_MATERIAL_BUNDLE_NAME,
@@ -177,9 +178,7 @@ export function usePetLoader(options?: {
   }
 
   async function applyMaterialBundleBuffer(buffer: ArrayBuffer) {
-    const { loadMaterialBundle, reparseSwfClip } = await import(
-      "@seer/swf-bundle/parse"
-    );
+    const { loadMaterialBundle } = await import("@seer/swf-bundle/parse");
     const { count, warnings: w } = await loadMaterialBundle(
       buffer,
       materialResolver,
@@ -187,10 +186,12 @@ export function usePetLoader(options?: {
     materialCount.value = materialResolver.size;
 
     if (pet.value?.type === "swf" && lastSwfBuffer) {
-      const clip = await reparseSwfClip(
+      // 重解析走 Worker：图集仍存活时连解码都跳过；已释放时峰值随 Worker 终止归还，
+      // 不会像旧的主线程 reparse 那样留下永不回收的 wasm 线性内存（>500 MB）
+      const clip = await reparseSwfClipInWorker(
         lastSwfBuffer,
         lastSwfFileName,
-        materialResolver,
+        materialSnapshot(),
         pet.value.clip.atlas,
       );
       pet.value = { type: "swf", clip, bundleBuffer: lastSwfBuffer };

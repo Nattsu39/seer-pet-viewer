@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@arkntools/unity-js": "^5.1.0",
+    "@arkntools/unity-js-tools": "^3.2.0",
     "buffer": "^6.0.3"
   },
   "devDependencies": {

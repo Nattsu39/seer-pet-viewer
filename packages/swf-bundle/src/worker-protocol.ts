@@ -6,6 +6,14 @@ import type {
 } from "./types.js";
 import type { AtlasPixels } from "./atlas.js";
 
+/**
+ * 解析 Worker 的请求模式：
+ * full:   完整解析（帧 + 图集），首次导入用
+ * frames: 仅重解析帧与材质，图集由主线程复用（needAtlas:false）
+ * atlas:  仅解码图集位图，remount 恢复用
+ */
+export type ParserWorkerMode = "full" | "frames" | "atlas";
+
 /** A range measured in elements of one of the packed typed-array buffers. */
 export interface PackedArrayRange {
   offset: number;
@@ -208,6 +216,9 @@ export function encodeSwfBundleFrames(
 export function encodeParsedSwfBundle(
   data: ParsedSwfBundle,
 ): EncodedParsedSwfBundle {
+  if (!data.atlasPixels) {
+    throw new Error("encodeParsedSwfBundle 需要 atlasPixels");
+  }
   const frames = encodeSwfBundleFrames(data);
   const rgba = data.atlasPixels.rgba;
   const atlasBuffer =
