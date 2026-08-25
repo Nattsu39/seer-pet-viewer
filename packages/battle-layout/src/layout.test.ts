@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_BATTLE_CONTAINER_WORLD_Y,
+  DEFAULT_BATTLE_PX_PER_UNIT,
   battleSpaceVertexBounds,
   computeBattlePetPlacement,
   fitBattleCanvas,
@@ -29,10 +31,41 @@ describe("computeBattlePetPlacement", () => {
     expect(placement.position.y).toBe(540 - 60);
   });
 
-  it("省略选项时使用内置默认（未校准 pxPerUnit=30、容器 y=0）", () => {
+  it("省略选项时使用内置默认（未校准 pxPerUnit=100、容器 y=0）", () => {
     const placement = computeBattlePetPlacement("left");
-    expect(placement.position).toEqual({ x: 960 - 4 * 30, y: 540 });
-    expect(placement.pixelsPerUnitX).toBeCloseTo(37.5);
+    expect(placement.position).toEqual({
+      x: 960 - 4 * DEFAULT_BATTLE_PX_PER_UNIT,
+      y: 540 - DEFAULT_BATTLE_CONTAINER_WORLD_Y * DEFAULT_BATTLE_PX_PER_UNIT,
+    });
+    expect(placement.pixelsPerUnitX).toBeCloseTo(
+      1.25 * DEFAULT_BATTLE_PX_PER_UNIT,
+    );
+  });
+
+  it("kind=spine 且省略 containerWorldY 时使用 spine 默认场景偏移 -3.47", () => {
+    const placement = computeBattlePetPlacement("left", {
+      pxPerUnit: 30,
+      kind: "spine",
+    });
+    // y = 540 - (-3.47) * 30，spine 默认使锚点相对 0 偏移下移
+    expect(placement.position.y).toBeCloseTo(540 - -3.47 * 30);
+  });
+
+  it("kind=swf（或省略）且未指定 containerWorldY 时偏移为 0", () => {
+    const swf = computeBattlePetPlacement("left", {
+      pxPerUnit: 30,
+      kind: "swf",
+    });
+    expect(swf.position.y).toBeCloseTo(540);
+  });
+
+  it("containerWorldY 叠加在 kind 默认之上（spine 基准 -3.47 + 2 = -1.47）", () => {
+    const placement = computeBattlePetPlacement("left", {
+      pxPerUnit: 30,
+      kind: "spine",
+      containerWorldY: 2,
+    });
+    expect(placement.position.y).toBeCloseTo(540 - (-3.47 + 2) * 30);
   });
 
   it("pxPerUnit 非正数抛错", () => {

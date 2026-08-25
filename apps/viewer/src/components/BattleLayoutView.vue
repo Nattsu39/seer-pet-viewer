@@ -21,6 +21,7 @@ import {
   BATTLE_DESIGN_WIDTH,
   DEFAULT_BATTLE_CONTAINER_WORLD_Y,
   DEFAULT_BATTLE_PX_PER_UNIT,
+  DEFAULT_SPINE_SCENE_WORLD_Y,
   computeBattlePetPlacement,
   fitBattleCanvas,
   projectBattlePlacement,
@@ -366,6 +367,8 @@ function applyLayoutToSide(side: BattleSide): void {
   const placement = computeBattlePetPlacement(side, {
     pxPerUnit: pxPerUnit.value,
     containerWorldY: containerWorldY.value,
+    // spine 隐式叠加默认场景 y 偏移 -3.47；微调输入仍从 0 起
+    kind: sidePet(side)?.type,
   });
   const projected = projectBattlePlacement(placement, fit);
   // scale.y 取负维持「内容 y 向上、画布原点左上」的预览翻转约定
@@ -420,6 +423,8 @@ async function handleExport(): Promise<void> {
       side,
       pxPerUnit: pxPerUnit.value,
       containerWorldY: containerWorldY.value,
+      // spine 导出同样隐式叠加默认场景 y 偏移
+      kind: pet.type,
     },
   );
 }
@@ -510,7 +515,8 @@ onBeforeUnmount(() => {
           </button>
         </div>
         <p class="hint">
-          默认 {{ DEFAULT_BATTLE_PX_PER_UNIT }}（未校准，可垫底客户端截图比对调整）
+          默认 pxPerUnit {{ DEFAULT_BATTLE_PX_PER_UNIT }}；spine 默认场景 Y
+          {{ DEFAULT_SPINE_SCENE_WORLD_Y }}（未校准，可垫底客户端截图比对调整）
         </p>
       </section>
 
