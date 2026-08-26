@@ -28,6 +28,23 @@ export function getLargeBundleCdnPrefix(): string | null {
   return value ?? DEFAULT_LARGE_BUNDLE_CDN_PREFIX;
 }
 
+/**
+ * 将 jsDelivr CDN 前缀解析为对应的 GitHub raw 直链（可直接下载）。
+ * 当 CDN 因单文件过大（>20 MB）返回 403 时，用它引导用户直接下载。
+ */
+export function githubBundleRawDownloadUrl(
+  item: RemoteBundleRef,
+): string | null {
+  const prefix = getLargeBundleCdnPrefix();
+  if (!prefix) return null;
+  const match = prefix.match(
+    /^https:\/\/cdn\.jsdelivr\.net\/gh\/([^/@]+)\/([^@]+)@([^/]+)\/(.+)$/,
+  );
+  if (!match) return null;
+  const [, owner, repo, branch, path] = match;
+  return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}/${cdnFileName(item.name)}`;
+}
+
 export function hasCdnMirror(item: RemoteBundleRef): boolean {
   return !!item.mirrored && getLargeBundleCdnPrefix() !== null;
 }
@@ -64,6 +81,22 @@ export function formatBundleHttpError(status: number): string {
       }
       return `下载失败（HTTP ${status}）`;
   }
+}
+
+/** jsDelivr 等 CDN 对单文件的大小限制提示（HTTP 403 响应体内容） */
+export const CDN_FILE_SIZE_LIMIT_HINT =
+  "File size exceeded the configured limit of 20 MB.";
+
+/** CDN 图床文件超过单文件大小限制（如 jsDelivr 20 MB），无法经 CDN 下载 */
+export class CdnFileTooLargeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CdnFileTooLargeError";
+  }
+}
+
+export function cdnFileTooLargeMessage(): string {
+  return "文件过大无法下载（CDN 单文件上限 20 MB），请从下方 GitHub 链接手动下载后导入";
 }
 
 /** 空字符串表示禁用远程加载；未设置时开发环境默认 /proxy */
@@ -132,8 +165,7 @@ export async function fetchBundleFromIndex(
   return fetchBundleFromUrl(resolveBundleFetchUrl(item), {
     ...options,
     expectedSize:
-      options?.expectedSize ??
-      (item.fileSize > 0 ? item.fileSize : undefined),
+      options?.expectedSize ?? (item.fileSize > 0 ? item.fileSize : undefined),
   });
 }
 
@@ -156,7 +188,10 @@ export function newseerBundleDownloadUrl(item: RemoteBundleRef): string {
 
 /** 失败后的命名下载是否可走同域代理/CDN（fetch 不受跨域限制） */
 export function canNamedRemoteBundleDownload(item: RemoteBundleRef): boolean {
-  if (item.fileSize < REMOTE_BUNDLE_MAX_BYTES && getBundleProxyPrefix() !== null) {
+  if (
+    item.fileSize < REMOTE_BUNDLE_MAX_BYTES &&
+    getBundleProxyPrefix() !== null
+  ) {
     return true;
   }
   return isRemoteBundleAllowed(item);
@@ -194,7 +229,7 @@ async function fetchBundleFromUrl(
   }
 
   if (!res.ok) {
-    throw new Error(formatBundleHttpError(res.status));
+    throw await bundleHttpError(res);
   }
 
   try {
@@ -205,6 +240,21 @@ async function fetchBundleFromUrl(
     }
     throw new Error("资源数据读取失败，请重试");
   }
+}
+
+/** 将非 2xx 响应转换为用户可读错误，识别 CDN 文件超限（403 + 提示文案）场景 */
+async function bundleHttpError(res: Response): Promise<Error> {
+  if (res.status === 403) {
+    try {
+      const text = await res.clone().text();
+      if (text.includes(CDN_FILE_SIZE_LIMIT_HINT)) {
+        return new CdnFileTooLargeError(cdnFileTooLargeMessage());
+      }
+    } catch {
+      // 忽略读取错误响应体失败，回退到通用错误提示
+    }
+  }
+  return new Error(formatBundleHttpError(res.status));
 }
 
 async function readResponseWithProgress(

@@ -24,6 +24,7 @@ import type {
 } from "../lib/pet-anim-index";
 import { loadPetAnimIndex } from "../lib/pet-anim-index";
 import {
+  CdnFileTooLargeError,
   fetchBundleFromIndex,
   fetchBundleFromNewseerProxy,
   isRemoteBundleAllowed,
@@ -73,6 +74,8 @@ export function usePetLoader(options?: {
   const materialCount = ref(0);
   const materialResolver = new MaterialResolver();
   const downloadingBundle = ref(false);
+  /** CDN 因单文件超过大小限制（403）导致无法下载 */
+  const cdnFileTooLarge = ref(false);
 
   watch(warnings, () => {
     warningsVisible.value = true;
@@ -95,7 +98,10 @@ export function usePetLoader(options?: {
     return Object.keys(snapshot).length > 0 ? snapshot : undefined;
   }
 
-  function buildSwfWarnings(parseWarnings: string[], clip: SwfClipData): ViewerWarning[] {
+  function buildSwfWarnings(
+    parseWarnings: string[],
+    clip: SwfClipData,
+  ): ViewerWarning[] {
     const out = withSwfRuntimeWarnings(
       parseWarnings,
       clip.atlasWidth,
@@ -219,9 +225,13 @@ export function usePetLoader(options?: {
       return;
     }
 
-    const shared = sharedBundles.find((b) => b.name === SHARED_MATERIAL_BASE_NAME);
+    const shared = sharedBundles.find(
+      (b) => b.name === SHARED_MATERIAL_BASE_NAME,
+    );
     if (!shared) {
-      throw new Error(`索引中缺少共享材质包 ${SHARED_SWF_MATERIAL_BUNDLE_NAME}`);
+      throw new Error(
+        `索引中缺少共享材质包 ${SHARED_SWF_MATERIAL_BUNDLE_NAME}`,
+      );
     }
 
     const buffer = await fetchBundleFromIndex(shared, {
@@ -243,6 +253,7 @@ export function usePetLoader(options?: {
 
     loading.value = true;
     error.value = null;
+    cdnFileTooLarge.value = false;
     warnings.value = [];
     remoteLoadContext.value = { entry, sharedBundles };
     clearDownloadProgress();
@@ -264,6 +275,7 @@ export function usePetLoader(options?: {
       remoteLoadContext.value = null;
     } catch (e) {
       error.value = formatRemoteLoadError(e);
+      cdnFileTooLarge.value = e instanceof CdnFileTooLargeError;
       pet.value = null;
     } finally {
       loading.value = false;
@@ -293,6 +305,7 @@ export function usePetLoader(options?: {
 
     const entry = ctx.entry;
     downloadingBundle.value = true;
+    cdnFileTooLarge.value = false;
     clearDownloadProgress();
     try {
       const buffer =
@@ -307,6 +320,7 @@ export function usePetLoader(options?: {
       downloadBlob(blob, remoteBundleDownloadFilename(entry));
     } catch (e) {
       error.value = formatRemoteLoadError(e);
+      cdnFileTooLarge.value = e instanceof CdnFileTooLargeError;
     } finally {
       downloadingBundle.value = false;
       clearDownloadProgress();
@@ -408,6 +422,7 @@ export function usePetLoader(options?: {
   function reset() {
     pet.value = null;
     error.value = null;
+    cdnFileTooLarge.value = false;
     remoteLoadContext.value = null;
     loadingMessage.value = null;
     clearDownloadProgress();
@@ -426,6 +441,7 @@ export function usePetLoader(options?: {
     loadingMessage,
     downloadProgress,
     downloadingBundle,
+    cdnFileTooLarge,
     remoteLoadContext,
     pet,
     parseMs,

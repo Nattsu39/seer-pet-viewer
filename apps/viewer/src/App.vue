@@ -15,6 +15,7 @@ import type { PetAnimIndex, PetAnimIndexEntry } from "./lib/pet-anim-index";
 import {
   isRemoteBundleEnabled,
   canNamedRemoteBundleDownload,
+  githubBundleRawDownloadUrl,
   newseerBundleDownloadUrl,
   remoteBundleDownloadFilename,
 } from "./lib/remote-bundle";
@@ -44,6 +45,7 @@ const {
   loadingMessage,
   downloadProgress,
   downloadingBundle,
+  cdnFileTooLarge,
   remoteLoadContext,
   pet,
   parseMs,
@@ -162,7 +164,16 @@ function remoteFailureDownloadFilename(): string | null {
   return remoteBundleDownloadFilename(entry);
 }
 
+/** CDN 因文件超限（403）时，改为提供 GitHub raw 直链供直接下载 */
+function remoteFailureGithubDownloadUrl(): string | null {
+  if (!cdnFileTooLarge.value) return null;
+  const entry = remoteLoadContext.value?.entry;
+  if (!entry) return null;
+  return githubBundleRawDownloadUrl(entry);
+}
+
 function canNamedRemoteFailureDownload(): boolean {
+  if (cdnFileTooLarge.value) return false;
   const entry = remoteLoadContext.value?.entry;
   if (!entry) return false;
   return canNamedRemoteBundleDownload(entry);
@@ -235,6 +246,7 @@ function canNamedRemoteFailureDownload(): boolean {
           :can-named-download="canNamedRemoteFailureDownload()"
           :download-filename="remoteFailureDownloadFilename()"
           :official-download-url="remoteFailureDownloadUrl()"
+          :github-download-url="remoteFailureGithubDownloadUrl()"
           :downloading="downloadingBundle"
           @retry="retryRemoteLoad"
           @named-download="downloadNamedRemoteBundle"

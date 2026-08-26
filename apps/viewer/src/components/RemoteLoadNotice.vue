@@ -17,6 +17,8 @@ const props = defineProps<{
   canNamedDownload?: boolean;
   downloadFilename?: string | null;
   officialDownloadUrl?: string | null;
+  /** CDN 文件超限时的 GitHub 手动下载链接 */
+  githubDownloadUrl?: string | null;
   downloading?: boolean;
 }>();
 
@@ -44,7 +46,10 @@ const progressLabel = computed(() => {
 });
 
 const showOfficialFilenameTip = computed(
-  () => !!props.officialDownloadUrl && !props.canNamedDownload,
+  () =>
+    !!props.officialDownloadUrl &&
+    !props.canNamedDownload &&
+    !props.githubDownloadUrl,
 );
 
 /** 官方直链下载后，浏览器通常以 URL 中的 hash 作为文件名 */
@@ -105,7 +110,12 @@ const officialSavedFilename = computed(() => {
       <span class="remote-notice-kind">{{ entry.kind === "swf" ? "SWF" : "Spine" }}</span>
     </p>
     <p class="remote-notice-message">{{ error }}</p>
-    <p v-if="canRetry" class="remote-notice-hint">
+    <p v-if="githubDownloadUrl" class="remote-notice-hint">
+      该文件超过 CDN 单文件大小限制，可从
+      <a :href="githubDownloadUrl" target="_blank" rel="noopener noreferrer">GitHub</a>
+      下载 bundle 后手动导入。
+    </p>
+    <p v-else-if="canRetry" class="remote-notice-hint">
       可点击重试，或通过顶部菜单导入本地 bundle、<code>.swfclip</code> / <code>.spineclip</code> 目录。
     </p>
     <p v-else-if="officialDownloadUrl && !showOfficialFilenameTip" class="remote-notice-hint">
@@ -154,7 +164,16 @@ const officialSavedFilename = computed(() => {
         {{ downloading ? "下载中…" : `下载 ${downloadFilename}` }}
       </button>
       <a
-        v-if="officialDownloadUrl && !canNamedDownload"
+        v-if="githubDownloadUrl"
+        class="remote-download-link"
+        :href="githubDownloadUrl"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        GitHub 下载
+      </a>
+      <a
+        v-if="officialDownloadUrl && !canNamedDownload && !githubDownloadUrl"
         class="remote-download-link"
         :href="officialDownloadUrl"
         target="_blank"
