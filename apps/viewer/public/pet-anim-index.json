@@ -1,6 +1,6 @@
 {
-  "version": "20260827141248",
-  "updatedAt": "2026-09-03T08:26:09.990Z",
+  "version": "20260903153513",
+  "updatedAt": "2026-09-04T05:49:28.774Z",
   "sharedBundles": [
     {
       "name": "petanimpackage_share_assets_flashtools_resources_materials_generated",
@@ -37173,6 +37173,21 @@
       "mirrored": true
     },
     {
+      "id": 4940,
+      "kind": "swf",
+      "name": "ppets_4940",
+      "path": "fc14e2eace47ed9a8aea0de3763f0b21",
+      "fileSize": 8754074,
+      "mirrored": true
+    },
+    {
+      "id": 4941,
+      "kind": "swf",
+      "name": "ppets_4941",
+      "path": "6b961cd2ca61f1242ad4be4fddce165e",
+      "fileSize": 3284235
+    },
+    {
       "id": 5000,
       "kind": "swf",
       "name": "ppets_5000",
@@ -44071,6 +44086,14 @@
       "name": "ppets_1400867",
       "path": "3f984f7f6ba1e0e25821b0002f3962e1",
       "fileSize": 7811260,
+      "mirrored": true
+    },
+    {
+      "id": 1400868,
+      "kind": "swf",
+      "name": "ppets_1400868",
+      "path": "82af4974da295603019806d094ad49f9",
+      "fileSize": 10972347,
       "mirrored": true
     },
     {
