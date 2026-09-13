@@ -1,8 +1,35 @@
 {
-  "name": "@seer/swf-bundle",
+  "name": "@seer-pet-anim/swf-bundle",
+  "description": "解析赛尔号 Unity SWF 动画 bundle(ppets),提取 clip 数据、网格与图集材质",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
+  "license": "MIT",
+  "author": "Nattsu39",
+  "homepage": "https://github.com/Nattsu39/seer-pet-viewer/tree/main/packages/swf-bundle#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nattsu39/seer-pet-viewer.git",
+    "directory": "packages/swf-bundle"
+  },
+  "bugs": "https://github.com/Nattsu39/seer-pet-viewer/issues",
+  "keywords": [
+    "seer",
+    "unity",
+    "asset-bundle",
+    "swf",
+    "parser",
+    "atlas"
+  ],
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -20,7 +47,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node ../../tools/rewrite-worker-urls.mjs .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },

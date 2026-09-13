@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadAssetBundle, AssetType } from "@arkntools/unity-js";
@@ -9,8 +9,10 @@ import { parsedBundleToJson } from "./clip-data.js";
 const root = resolve(import.meta.dirname, "../../..");
 const bundlePath = resolve(root, "ppets_70.bundle");
 const metaPath = resolve(root, "examples/ppets_70.swfclip/meta.json");
+// 夹具为本地游戏素材(不进 git),缺失时跳过,保证 CI 可跑
+const hasFixture = existsSync(bundlePath) && existsSync(metaPath);
 
-describe("bundle vs swfclip parity", () => {
+describe.skipIf(!hasFixture)("bundle vs swfclip parity", () => {
   it("parseBundleCore frame0 uvs match exported swfclip", async () => {
     const buf = readFileSync(bundlePath);
     const core = await parseBundleCore(

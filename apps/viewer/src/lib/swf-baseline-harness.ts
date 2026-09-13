@@ -1,6 +1,6 @@
-import type { SwfClipData } from "@seer/swf-bundle";
+import type { SwfClipData } from "@seer-pet-anim/swf-bundle";
 import { getEffectiveSwfMaxTextureSize } from "../lib/swf-texture";
-import type { SwfPlayer } from "@seer/swf-renderer";
+import type { SwfPlayer } from "@seer-pet-anim/swf-renderer";
 
 /** Harness 所需的播放器公开 API（避免 Vue UnwrapRef 剥离 class 私有字段） */
 type SwfBaselinePlayer = Pick<
@@ -18,7 +18,7 @@ import {
   type RgbaImage,
   type TextureAlignmentOptions,
   type TextureAlignmentReport,
-} from "@seer/anim-export/texture-alignment";
+} from "@seer-pet-anim/anim-export/texture-alignment";
 
 export const SWF_BASELINE_HARNESS_VERSION = 1;
 
@@ -97,7 +97,11 @@ async function sha256Hex(data: ArrayBuffer | Uint8Array): Promise<string> {
     .join("");
 }
 
-function countNonZeroAlphaPixels(pixels: Uint8Array, width: number, height: number): number {
+function countNonZeroAlphaPixels(
+  pixels: Uint8Array,
+  width: number,
+  height: number,
+): number {
   let count = 0;
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -133,7 +137,9 @@ async function loadReferencePng(url: string): Promise<RgbaImage> {
   };
 }
 
-async function capturePreviewPixels(player: SwfBaselinePlayer): Promise<RgbaImage> {
+async function capturePreviewPixels(
+  player: SwfBaselinePlayer,
+): Promise<RgbaImage> {
   const canvas = player.getCanvas();
   const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((value) => {
@@ -174,7 +180,10 @@ let accessors: SwfBaselineAccessors = {
 export function installSwfBaselineHarness(options: SwfBaselineAccessors): void {
   if (!import.meta.env.DEV) return;
   accessors = options;
-  if ((window as Window & { __SEER_SWF_BASELINE__?: SwfBaselineHarness }).__SEER_SWF_BASELINE__) {
+  if (
+    (window as Window & { __SEER_SWF_BASELINE__?: SwfBaselineHarness })
+      .__SEER_SWF_BASELINE__
+  ) {
     return;
   }
   const current = {
@@ -192,8 +201,10 @@ export function installSwfBaselineHarness(options: SwfBaselineAccessors): void {
       const player = current.getPlayer();
       const clip = current.getClip();
       if (!player || !clip) return null;
-      const bitmapWidth = clip.atlas.width > 0 ? clip.atlas.width : clip.atlasWidth;
-      const bitmapHeight = clip.atlas.height > 0 ? clip.atlas.height : clip.atlasHeight;
+      const bitmapWidth =
+        clip.atlas.width > 0 ? clip.atlas.width : clip.atlasWidth;
+      const bitmapHeight =
+        clip.atlas.height > 0 ? clip.atlas.height : clip.atlasHeight;
       return {
         harnessVersion: SWF_BASELINE_HARNESS_VERSION,
         userAgent: navigator.userAgent,
@@ -224,16 +235,24 @@ export function installSwfBaselineHarness(options: SwfBaselineAccessors): void {
       if (!player) throw new Error("播放器未就绪");
       player.setSequence(name);
       player.pause();
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
     },
 
     async gotoFrame(frame) {
       const player = current.getPlayer();
       if (!player) throw new Error("播放器未就绪");
       player.gotoFrame(frame);
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
     },
 
     pause() {
@@ -277,13 +296,21 @@ export function installSwfBaselineHarness(options: SwfBaselineAccessors): void {
         background: captureOptions.background ?? "transparent",
         renderFxLayers: captureOptions.renderFxLayers ?? true,
       })) {
-        const pixels = new Uint8Array(frame.pixels.buffer, frame.pixels.byteOffset, frame.pixels.byteLength);
+        const pixels = new Uint8Array(
+          frame.pixels.buffer,
+          frame.pixels.byteOffset,
+          frame.pixels.byteLength,
+        );
         out.push({
           index: frame.index,
           width: frame.width,
           height: frame.height,
           sha256: await sha256Hex(pixels),
-          nonZeroAlphaPixels: countNonZeroAlphaPixels(pixels, frame.width, frame.height),
+          nonZeroAlphaPixels: countNonZeroAlphaPixels(
+            pixels,
+            frame.width,
+            frame.height,
+          ),
         });
       }
       return out;
@@ -308,11 +335,16 @@ export function installSwfBaselineHarness(options: SwfBaselineAccessors): void {
       if (!player) throw new Error("播放器未就绪");
       const reference = await loadReferencePng(referenceUrl);
       const candidate = await capturePreviewPixels(player);
-      const report = detectTextureMisalignment(reference, candidate, alignmentOptions);
+      const report = detectTextureMisalignment(
+        reference,
+        candidate,
+        alignmentOptions,
+      );
       return { ...report, referenceUrl };
     },
   };
 
-  (window as Window & { __SEER_SWF_BASELINE__?: SwfBaselineHarness }).__SEER_SWF_BASELINE__ =
-    harness;
+  (
+    window as Window & { __SEER_SWF_BASELINE__?: SwfBaselineHarness }
+  ).__SEER_SWF_BASELINE__ = harness;
 }

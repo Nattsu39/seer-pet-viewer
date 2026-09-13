@@ -1,8 +1,34 @@
 {
-  "name": "@seer/spine-renderer",
+  "name": "@seer-pet-anim/spine-renderer",
+  "description": "基于 @esotericsoftware/spine-webgl 的赛尔号 Spine 宠物动画播放器",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
+  "license": "MIT",
+  "author": "Nattsu39",
+  "homepage": "https://github.com/Nattsu39/seer-pet-viewer/tree/main/packages/spine-renderer#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nattsu39/seer-pet-viewer.git",
+    "directory": "packages/spine-renderer"
+  },
+  "bugs": "https://github.com/Nattsu39/seer-pet-viewer/issues",
+  "keywords": [
+    "seer",
+    "spine",
+    "spine-webgl",
+    "renderer",
+    "animation"
+  ],
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -12,13 +38,13 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node ../../tools/rewrite-worker-urls.mjs .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
-    "@seer/anim-export": "workspace:*",
-    "@seer/spine-bundle": "workspace:*",
+    "@seer-pet-anim/anim-export": "workspace:*",
+    "@seer-pet-anim/spine-bundle": "workspace:*",
     "@esotericsoftware/spine-core": "4.0.31",
     "@esotericsoftware/spine-webgl": "4.0.31"
   },

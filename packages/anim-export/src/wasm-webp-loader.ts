@@ -1,4 +1,3 @@
-import wasmUrl from "wasm-webp/dist/esm/webp-wasm.wasm?url";
 import createModule from "wasm-webp/dist/esm/webp-wasm.js";
 
 interface WebPConfig {
@@ -35,10 +34,10 @@ let modulePromise: Promise<WasmModule> | null = null;
 
 function getModule(): Promise<WasmModule> {
   if (!modulePromise) {
-    modulePromise = createModule({
-      locateFile: (path: string) =>
-        path.endsWith(".wasm") ? wasmUrl : path,
-    }) as Promise<WasmModule>;
+    // 不传 locateFile:emscripten glue 会用
+    // new URL("webp-wasm.wasm", import.meta.url) 定位 npm 包内同目录的 wasm,
+    // Vite/webpack/Node 均原生支持该模式
+    modulePromise = createModule() as Promise<WasmModule>;
   }
   return modulePromise;
 }

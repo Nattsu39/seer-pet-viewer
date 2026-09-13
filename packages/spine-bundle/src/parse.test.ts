@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -21,14 +21,16 @@ const spineBundle = resolve(
   import.meta.dirname,
   "../../../pskilltimeline_spines_4000",
 );
+// 夹具为本地游戏素材(不进 git),缺失时跳过,保证 CI 可跑
+const hasSpineBundle = existsSync(spineBundle);
 
 describe("spine-bundle", () => {
-  it("detects spine bundle kind", async () => {
+  it.skipIf(!hasSpineBundle)("detects spine bundle kind", async () => {
     const buffer = readFileSync(spineBundle);
     await expect(detectBundleKind(buffer)).resolves.toBe("spine");
   });
 
-  it("parses pskilltimeline_spines_4000 metadata", async () => {
+  it.skipIf(!hasSpineBundle)("parses pskilltimeline_spines_4000 metadata", async () => {
     const buffer = readFileSync(spineBundle);
     const meta = await parseSpineBundleMetadata(
       buffer,
@@ -45,7 +47,7 @@ describe("spine-bundle", () => {
     expect(meta.atlasText).toContain("4000_7.png");
   });
 
-  it("reads skeleton version from binary header", async () => {
+  it.skipIf(!hasSpineBundle)("reads skeleton version from binary header", async () => {
     const buffer = readFileSync(spineBundle);
     const meta = await parseSpineBundleMetadata(
       buffer,
@@ -62,7 +64,7 @@ describe("spine-bundle", () => {
     expect(extractSpinePetId("bundle", "4000_SkeletonData")).toBe(4000);
   });
 
-  it("parses full bundle when texture decode is available", async () => {
+  it.skipIf(!hasSpineBundle)("parses full bundle when texture decode is available", async () => {
     const buffer = readFileSync(spineBundle);
     const core = await parseSpineBundleCore(
       buffer,

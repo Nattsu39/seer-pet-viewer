@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -17,6 +17,8 @@ const spineBundle = resolve(
   import.meta.dirname,
   "../../../pskilltimeline_spines_4000",
 );
+// 夹具为本地游戏素材(不进 git),缺失时跳过,保证 CI 可跑
+const hasSpineBundle = existsSync(spineBundle);
 
 function bindAtlasTextures(atlas: TextureAtlas, core: Awaited<ReturnType<typeof parseSpineBundleCore>>) {
   const sizeByName = new Map(
@@ -33,7 +35,7 @@ function bindAtlasTextures(atlas: TextureAtlas, core: Awaited<ReturnType<typeof 
   }
 }
 
-describe("spine skeleton data", () => {
+describe.skipIf(!hasSpineBundle)("spine skeleton data", () => {
   it("loads attachments and has non-zero bounds", async () => {
     const buffer = readFileSync(spineBundle);
     const core = await parseSpineBundleCore(

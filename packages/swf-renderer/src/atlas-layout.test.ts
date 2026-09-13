@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { planAtlasTileGrid } from "@seer/swf-bundle";
+import { planAtlasTileGrid } from "@seer-pet-anim/swf-bundle";
 import {
   releaseAtlasLayoutPixels,
   type AtlasUploader,

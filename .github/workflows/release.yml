@@ -1,0 +1,61 @@
+# 发布流水线:main 分支推送时运行。
+# 有 changeset 时由 changesets 创建/更新 Version PR;无 changeset 时
+# 执行发布(changeset publish 会自动把 workspace:* 解析为真实版本)。
+# 发布产物带 npm provenance(需 npm 账号在 registry 启用,Actions OIDC 提供)。
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  release:
+    if: github.repository == 'Nattsu39/seer-pet-viewer'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck packages
+        run: pnpm --filter "./packages/*" typecheck
+
+      - name: Test packages
+        run: pnpm --filter "./packages/*" test
+
+      - name: Build packages
+        run: pnpm build:packages
+
+      - name: Smoke check dist
+        run: pnpm smoke:dist
+
+      - name: Create release PR or publish
+        uses: changesets/action@v1
+        with:
+          version: pnpm changeset version
+          publish: pnpm changeset publish
+          title: "chore: version packages"
+          commit: "chore: version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true

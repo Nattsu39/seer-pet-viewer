@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { computeSwfBattleExportRootTransform } from "./battle-transform.js";
-import type { BattleViewportLayout } from "@seer/anim-export/capture";
+import type { BattleViewportLayout } from "@seer-pet-anim/anim-export/capture";
 
 const LAYOUT: BattleViewportLayout = {
   width: 542,

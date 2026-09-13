@@ -14,8 +14,11 @@ import {
   SceneRenderer,
   Vector3,
 } from "@esotericsoftware/spine-webgl";
-import type { SpineClipData } from "@seer/spine-bundle";
-import { parseAtlasUsesPma, SPINE_PREVIEW_FPS } from "@seer/spine-bundle";
+import type { SpineClipData } from "@seer-pet-anim/spine-bundle";
+import {
+  parseAtlasUsesPma,
+  SPINE_PREVIEW_FPS,
+} from "@seer-pet-anim/spine-bundle";
 import {
   capLayoutVertexBounds,
   computeReferenceScale,
@@ -24,11 +27,11 @@ import {
   planReferenceExport,
   resolveReferenceSequence,
   tightCropRgbaFrames,
-} from "@seer/anim-export/capture";
+} from "@seer-pet-anim/anim-export/capture";
 import type {
   BattleCaptureOptions,
   BattleViewportLayout,
-} from "@seer/anim-export";
+} from "@seer-pet-anim/anim-export";
 import {
   computeSpineBattleExportCamera,
   computeSpineFixedCamera,
@@ -214,10 +217,7 @@ export class SpinePlayer {
     if (!anim) return;
 
     this.state.setAnimation(0, anim.name, this.loop);
-    this.frameCount = Math.max(
-      1,
-      Math.ceil(anim.duration * SPINE_PREVIEW_FPS),
-    );
+    this.frameCount = Math.max(1, Math.ceil(anim.duration * SPINE_PREVIEW_FPS));
     this.frameIndex = 0;
     this.applyPose(0);
     this.updateBounds();
@@ -386,7 +386,9 @@ export class SpinePlayer {
           width: frame.width,
           height: frame.height,
         };
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => resolve()),
+        );
       }
     } finally {
       this.renderWithAlphaClear = false;

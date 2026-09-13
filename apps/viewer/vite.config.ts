@@ -59,53 +59,53 @@ export default defineConfig(({ command }) => ({
   resolve: {
     alias: [
       {
-        find: "@seer/anim-export/texture-alignment",
+        find: "@seer-pet-anim/anim-export/texture-alignment",
         replacement: resolve(
           __dirname,
           "../../packages/anim-export/src/texture-alignment.ts",
         ),
       },
       {
-        find: "@seer/anim-export/capture",
+        find: "@seer-pet-anim/anim-export/capture",
         replacement: resolve(
           __dirname,
           "../../packages/anim-export/src/capture.ts",
         ),
       },
       {
-        find: "@seer/anim-export",
+        find: "@seer-pet-anim/anim-export",
         replacement: resolve(
           __dirname,
           "../../packages/anim-export/src/index.ts",
         ),
       },
       {
-        find: "@seer/swf-bundle/parse",
+        find: "@seer-pet-anim/swf-bundle/parse",
         replacement: resolve(
           __dirname,
           "../../packages/swf-bundle/src/parse.ts",
         ),
       },
       {
-        find: "@seer/swf-bundle",
+        find: "@seer-pet-anim/swf-bundle",
         replacement: resolve(__dirname, "../../packages/swf-bundle/src"),
       },
       {
-        find: "@seer/swf-renderer",
+        find: "@seer-pet-anim/swf-renderer",
         replacement: resolve(
           __dirname,
           "../../packages/swf-renderer/src/index.ts",
         ),
       },
       {
-        find: "@seer/spine-bundle",
+        find: "@seer-pet-anim/spine-bundle",
         replacement: resolve(
           __dirname,
           "../../packages/spine-bundle/src/index.ts",
         ),
       },
       {
-        find: "@seer/spine-renderer",
+        find: "@seer-pet-anim/spine-renderer",
         replacement: resolve(
           __dirname,
           "../../packages/spine-renderer/src/index.ts",

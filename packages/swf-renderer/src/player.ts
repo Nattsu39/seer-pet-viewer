@@ -16,11 +16,11 @@ import {
   planReferenceExport,
   resolveReferenceSequence,
   tightCropRgbaFrames,
-} from "@seer/anim-export/capture";
+} from "@seer-pet-anim/anim-export/capture";
 import type {
   BattleCaptureOptions,
   BattleViewportLayout,
-} from "@seer/anim-export";
+} from "@seer-pet-anim/anim-export";
 import { computeSwfBattleExportRootTransform } from "./battle-transform.js";
 import { readRenderTexturePixels } from "./read-render-texture-pixels.js";
 import type {
@@ -28,14 +28,14 @@ import type {
   SwfFrame,
   SwfSequence,
   SwfSubMesh,
-} from "@seer/swf-bundle";
+} from "@seer-pet-anim/swf-bundle";
 import {
   computeSequenceVertexBounds,
   insetQuadUvs,
   insetTileSliceQuadUvs,
   isSwfContentLayer,
   sliceQuadAcrossTiles,
-} from "@seer/swf-bundle";
+} from "@seer-pet-anim/swf-bundle";
 import {
   materialToPixiBlend,
   needsGrabPass,
@@ -431,7 +431,12 @@ export class SwfPlayer {
     const renderFxLayers = options.renderFxLayers ?? true;
 
     let layoutBounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
-    let layout: { width: number; height: number; pixelsPerUnitX: number; pixelsPerUnitY: number };
+    let layout: {
+      width: number;
+      height: number;
+      pixelsPerUnitX: number;
+      pixelsPerUnitY: number;
+    };
     let battleLayout: BattleViewportLayout | null = null;
     if (options.battle) {
       // 战斗视口固定设计帧尺寸，与序列包围盒无关，无需计算顶点包围盒
@@ -447,9 +452,7 @@ export class SwfPlayer {
       const refScale = computeReferenceScale(
         computeSequenceVertexBounds(refSeq),
       );
-      layoutBounds = capLayoutVertexBounds(
-        computeSequenceVertexBounds(seq),
-      );
+      layoutBounds = capLayoutVertexBounds(computeSequenceVertexBounds(seq));
       layout = planReferenceExport(layoutBounds, refScale, options.scale);
     }
     const transparent = options.background === "transparent";

@@ -4,7 +4,7 @@ import {
   BATTLE_DESIGN_HEIGHT,
   type BattleLayoutOptions,
   type BattleSide,
-} from "@seer/battle-layout";
+} from "@seer-pet-anim/battle-layout";
 import { fitCanvas, MAX_EXPORT_SIDE } from "./export-dimensions.js";
 
 export interface BattleViewportOptions extends BattleLayoutOptions {

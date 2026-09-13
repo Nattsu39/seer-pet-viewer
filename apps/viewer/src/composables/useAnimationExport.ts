@@ -4,7 +4,7 @@ import type {
   ExportFormat,
   ExportProgress,
   FrameCaptureSource,
-} from "@seer/anim-export";
+} from "@seer-pet-anim/anim-export";
 
 export type ExportScale = 1 | 2 | 3;
 export type ViewerExportFormat = ExportFormat | "png-sequence";
@@ -30,14 +30,12 @@ export function useAnimationExport() {
     exportProgress.value = null;
 
     const format = exportFormat.value;
-    const background = exportBackground.value
-      ? backgroundColor
-      : "transparent";
+    const background = exportBackground.value ? backgroundColor : "transparent";
 
     try {
       if (format === "png-sequence") {
         const { exportPngSequence, downloadBlob, buildPngSequenceFilename } =
-          await import("@seer/anim-export");
+          await import("@seer-pet-anim/anim-export");
         const blob = await exportPngSequence(
           source,
           {
@@ -54,7 +52,7 @@ export function useAnimationExport() {
         downloadBlob(blob, buildPngSequenceFilename(petId, sequence));
       } else {
         const { exportAnimation, downloadBlob, buildExportFilename } =
-          await import("@seer/anim-export");
+          await import("@seer-pet-anim/anim-export");
         const blob = await exportAnimation(
           source,
           {
@@ -71,8 +69,7 @@ export function useAnimationExport() {
         downloadBlob(blob, buildExportFilename(petId, sequence, format));
       }
     } catch (err) {
-      exportError.value =
-        err instanceof Error ? err.message : "导出失败";
+      exportError.value = err instanceof Error ? err.message : "导出失败";
     } finally {
       exporting.value = false;
       exportProgress.value = null;

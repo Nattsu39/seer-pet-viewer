@@ -2,8 +2,8 @@ import {
   appendAtlasTileWarning,
   filterAtlasTileWarnings,
   getMaxTextureSize,
-} from "@seer/swf-bundle";
-import { useHighPrecisionAtlasSampling } from "@seer/swf-renderer";
+} from "@seer-pet-anim/swf-bundle";
+import { useHighPrecisionAtlasSampling } from "@seer-pet-anim/swf-renderer";
 import { isMobileViewport } from "../composables/useBreakpoint";
 import { buildPetDeepLinkUrl } from "./pet-deep-link";
 import type { ViewerWarning } from "./viewer-warning";

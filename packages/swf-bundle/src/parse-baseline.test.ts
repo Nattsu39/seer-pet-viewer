@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseBundleCore } from "./parse.js";
@@ -18,8 +18,12 @@ function writeJson(path: string, value: unknown) {
 }
 
 describe("swf parse baseline", () => {
+  // 夹具为本地游戏素材(不进 git),缺失时跳过,保证 CI 可跑
+  const hasFixtures = PARSE_TARGETS.every((target) =>
+    existsSync(resolve(ROOT, target.bundle)),
+  );
   for (const target of PARSE_TARGETS) {
-    it(`writes parse stats for ${target.id}`, async () => {
+    it.skipIf(!hasFixtures)(`writes parse stats for ${target.id}`, async () => {
       const bundlePath = resolve(ROOT, target.bundle);
       const buf = readFileSync(bundlePath);
       const core = await parseBundleCore(buf, target.id);
