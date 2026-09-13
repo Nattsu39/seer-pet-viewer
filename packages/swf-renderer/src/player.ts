@@ -14,13 +14,13 @@ import {
   planReferenceExport,
   resolveReferenceSequence,
   streamCapturedFrames,
-} from "@seer/anim-export/capture";
+} from "@seer-pet-anim/anim-export/capture";
 import type {
   BattleCaptureOptions,
   CaptureOptions,
-  ExportViewport,
   BattleViewportLayout,
-} from "@seer/anim-export";
+  ExportViewport,
+} from "@seer-pet-anim/anim-export";
 import { computeSwfBattleExportRootTransform } from "./battle-transform.js";
 import { readRenderTexturePixels } from "./read-render-texture-pixels.js";
 import type {
@@ -28,7 +28,7 @@ import type {
   SwfFrame,
   SwfSequence,
   SwfSubMesh,
-} from "@seer/swf-bundle";
+} from "@seer-pet-anim/swf-bundle";
 import {
   computeSequenceVertexBounds,
   resolveSwfPixelsPerUnit,
@@ -36,7 +36,7 @@ import {
   insetTileSliceQuadUvs,
   isSwfContentLayer,
   sliceQuadAcrossTiles,
-} from "@seer/swf-bundle";
+} from "@seer-pet-anim/swf-bundle";
 import {
   materialToPixiBlend,
   needsGrabPass,
@@ -434,7 +434,12 @@ export class SwfPlayer {
       const renderFxLayers = options.renderFxLayers ?? true;
 
       let layoutBounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
-      let layout: { width: number; height: number; pixelsPerUnitX: number; pixelsPerUnitY: number };
+      let layout: {
+        width: number;
+        height: number;
+        pixelsPerUnitX: number;
+        pixelsPerUnitY: number;
+      };
       let battleLayout: BattleViewportLayout | null = null;
       let keepViewport = !!options.viewport;
       if (options.battle) {
@@ -450,8 +455,17 @@ export class SwfPlayer {
 
         const refBounds = computeSequenceVertexBounds(refSeq);
         const refScale = resolveSwfPixelsPerUnit(this.clip.pixelsPerUnit);
-        layoutBounds = options.viewport ? refBounds : computeSequenceVertexBounds(seq);
-        const referenceLayout = planReferenceExport(layoutBounds, refScale, options.scale, options.maxSide, undefined, options.viewport);
+        layoutBounds = options.viewport
+          ? refBounds
+          : computeSequenceVertexBounds(seq);
+        const referenceLayout = planReferenceExport(
+          layoutBounds,
+          refScale,
+          options.scale,
+          options.maxSide,
+          undefined,
+          options.viewport,
+        );
         layout = referenceLayout;
         if (referenceLayout.crop) {
           layoutBounds = refBounds;
@@ -484,14 +498,26 @@ export class SwfPlayer {
             this.root.position.set(t.x, t.y);
           } else {
             this.applyExportTransform(
-              layoutBounds, layout.width, layout.height,
-              layout.pixelsPerUnitX, layout.pixelsPerUnitY,
+              layoutBounds,
+              layout.width,
+              layout.height,
+              layout.pixelsPerUnitX,
+              layout.pixelsPerUnitY,
             );
           }
           this.renderCurrentFrameMeshes({ renderFxLayers });
-          this.app.renderer.render({ container: this.app.stage, target: exportRT, clear: true });
+          this.app.renderer.render({
+            container: this.app.stage,
+            target: exportRT,
+            clear: true,
+          });
           return {
-            pixels: readRenderTexturePixels(this.app, exportRT, layout.width, layout.height),
+            pixels: readRenderTexturePixels(
+              this.app,
+              exportRT,
+              layout.width,
+              layout.height,
+            ),
             width: layout.width,
             height: layout.height,
           };
@@ -503,7 +529,11 @@ export class SwfPlayer {
         }
       };
       try {
-        yield* streamCapturedFrames(seq.frames.length, renderFrame, !battleLayout && !keepViewport);
+        yield* streamCapturedFrames(
+          seq.frames.length,
+          renderFrame,
+          !battleLayout && !keepViewport,
+        );
       } finally {
         exportRT.destroy(true);
         this.syncGrabTextureToRenderer();

@@ -2,14 +2,14 @@
 import { ref, watch, onBeforeUnmount, computed, nextTick } from "vue";
 import ExportModal from "./ExportModal.vue";
 import { useHistoryOverlay } from "../composables/useHistoryOverlay";
-import { SwfPlayer } from "@seer/swf-renderer";
-import { ensureSwfClipAtlas } from "@seer/swf-bundle/parse";
+import { SwfPlayer } from "@seer-pet-anim/swf-renderer";
+import { ensureSwfClipAtlas } from "@seer-pet-anim/swf-bundle/parse";
 import { disposePetClip } from "../lib/dispose-pet-clip";
-import { SpinePlayer } from "@seer/spine-renderer";
-import type { SwfClipData } from "@seer/swf-bundle";
+import { SpinePlayer } from "@seer-pet-anim/spine-renderer";
+import type { SwfClipData } from "@seer-pet-anim/swf-bundle";
 import { getEffectiveSwfMaxTextureSize } from "../lib/swf-texture";
-import type { SpineClipData } from "@seer/spine-bundle";
-import type { FrameCaptureSource } from "@seer/anim-export";
+import type { SpineClipData } from "@seer-pet-anim/spine-bundle";
+import type { FrameCaptureSource } from "@seer-pet-anim/anim-export";
 import type { PetClip } from "../composables/usePetLoader";
 import type { ToolbarPosition } from "../composables/useViewerSettings";
 import {

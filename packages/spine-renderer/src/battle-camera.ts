@@ -1,4 +1,4 @@
-import type { BattleViewportLayout } from "@seer/anim-export/capture";
+import type { BattleViewportLayout } from "@seer-pet-anim/anim-export/capture";
 
 export interface FixedPlacementTransform {
   /** 内容原点在画布上的 CSS 像素位置（y 向下，屏幕约定） */

@@ -1,8 +1,33 @@
 {
-  "name": "@seer/battle-layout",
+  "name": "@seer-pet-anim/battle-layout",
+  "description": "赛尔号战斗场景布局计算(16:9 画布、宠物站位与相机适配,常量逆向自游戏客户端)",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
+  "license": "MIT",
+  "author": "Nattsu39",
+  "homepage": "https://github.com/Nattsu39/seer-pet-viewer/tree/main/packages/battle-layout#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nattsu39/seer-pet-viewer.git",
+    "directory": "packages/battle-layout"
+  },
+  "bugs": "https://github.com/Nattsu39/seer-pet-viewer/issues",
+  "keywords": [
+    "seer",
+    "battle-layout",
+    "layout",
+    "canvas"
+  ],
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -12,7 +37,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node ../../tools/rewrite-worker-urls.mjs .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },

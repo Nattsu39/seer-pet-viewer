@@ -3,7 +3,7 @@ import {
   computeSpineBattleExportCamera,
   computeSpineFixedCamera,
 } from "./battle-camera.js";
-import type { BattleViewportLayout } from "@seer/anim-export/capture";
+import type { BattleViewportLayout } from "@seer-pet-anim/anim-export/capture";
 
 describe("computeSpineFixedCamera", () => {
   it("原点在画布中心时相机中心为世界原点", () => {

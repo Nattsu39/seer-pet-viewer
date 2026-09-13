@@ -14,26 +14,29 @@ import {
   SceneRenderer,
   Vector3,
 } from "@esotericsoftware/spine-webgl";
-import type { SpineClipData } from "@seer/spine-bundle";
-import { computeSpineNativePixelsPerUnit } from "./export-dimensions.js";
-import { parseAtlasUsesPma, SPINE_PREVIEW_FPS } from "@seer/spine-bundle";
+import type { SpineClipData } from "@seer-pet-anim/spine-bundle";
+import {
+  parseAtlasUsesPma,
+  SPINE_PREVIEW_FPS,
+} from "@seer-pet-anim/spine-bundle";
 import {
   planBattleViewportExport,
   planReferenceExport,
   resolveReferenceSequence,
   streamCapturedFrames,
-} from "@seer/anim-export/capture";
+} from "@seer-pet-anim/anim-export/capture";
 import type {
   BattleCaptureOptions,
   CaptureOptions,
   ExportViewport,
   BattleViewportLayout,
-} from "@seer/anim-export";
+} from "@seer-pet-anim/anim-export";
 import {
   computeSpineBattleExportCamera,
   computeSpineFixedCamera,
   type FixedPlacementTransform,
 } from "./battle-camera.js";
+import { computeSpineNativePixelsPerUnit } from "./export-dimensions.js";
 
 export interface SpinePlayerOptions {
   backgroundColor?: number;
@@ -215,10 +218,7 @@ export class SpinePlayer {
     if (!anim) return;
 
     this.state.setAnimation(0, anim.name, this.loop);
-    this.frameCount = Math.max(
-      1,
-      Math.ceil(anim.duration * SPINE_PREVIEW_FPS),
-    );
+    this.frameCount = Math.max(1, Math.ceil(anim.duration * SPINE_PREVIEW_FPS));
     this.frameIndex = 0;
     this.applyPose(0);
     this.updateBounds();
@@ -310,7 +310,12 @@ export class SpinePlayer {
 
       const frameTotal = this.frameCount;
       let bounds = { minX: 0, minY: 0, maxX: 1, maxY: 1 };
-      let layout: { width: number; height: number; pixelsPerUnitX: number; pixelsPerUnitY: number };
+      let layout: {
+        width: number;
+        height: number;
+        pixelsPerUnitX: number;
+        pixelsPerUnitY: number;
+      };
       let battleLayout: BattleViewportLayout | null = null;
       let keepViewport = !!options.viewport;
       if (options.battle) {
@@ -318,8 +323,17 @@ export class SpinePlayer {
         battleLayout = planBattleViewportExport(options.battle, options.scale);
         layout = battleLayout;
       } else {
-        bounds = options.viewport ? refBounds : this.computeSequenceBounds(frameTotal);
-        const referenceLayout = planReferenceExport(bounds, refScale, options.scale, options.maxSide, undefined, options.viewport);
+        bounds = options.viewport
+          ? refBounds
+          : this.computeSequenceBounds(frameTotal);
+        const referenceLayout = planReferenceExport(
+          bounds,
+          refScale,
+          options.scale,
+          options.maxSide,
+          undefined,
+          options.viewport,
+        );
         layout = referenceLayout;
         if (referenceLayout.crop) {
           bounds = refBounds;
@@ -342,10 +356,7 @@ export class SpinePlayer {
         this.applyBattleExportCamera(battleLayout);
         this.skeleton.scaleX = battleLayout.pixelsPerUnitX < 0 ? -1 : 1;
       } else {
-        this.applyExportCamera(
-          bounds,
-          layout.pixelsPerUnitX,
-        );
+        this.applyExportCamera(bounds, layout.pixelsPerUnitX);
       }
 
       const renderFrame = (i: number) => {
@@ -358,7 +369,11 @@ export class SpinePlayer {
           height: layout.height,
         };
       };
-      yield* streamCapturedFrames(frameTotal, renderFrame, !battleLayout && !keepViewport);
+      yield* streamCapturedFrames(
+        frameTotal,
+        renderFrame,
+        !battleLayout && !keepViewport,
+      );
     } finally {
       this.renderWithAlphaClear = false;
       this.backgroundColor = savedBg;
@@ -374,7 +389,10 @@ export class SpinePlayer {
       } else {
         this.updateCamera(false);
       }
-      if (savedSequence && savedSequence !== this.state.getCurrent(0)?.animation?.name) {
+      if (
+        savedSequence &&
+        savedSequence !== this.state.getCurrent(0)?.animation?.name
+      ) {
         this.setSequence(savedSequence);
       }
       this.frameIndex = savedFrame;

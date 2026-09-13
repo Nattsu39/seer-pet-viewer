@@ -1,4 +1,4 @@
-import type { SwfBlendMode, SwfMaterialState } from "@seer/swf-bundle";
+import type { SwfBlendMode, SwfMaterialState } from "@seer-pet-anim/swf-bundle";
 
 /** 与 pet_export.swf_shade_vec 一致：这些混合在 Unity 侧假定 PMA 片元色 */
 const PMA_OUTPUT_BLEND_MODES: ReadonlySet<SwfBlendMode> = new Set([
@@ -25,7 +25,9 @@ export interface PixiBlendState {
   blendMode: PixiBlendMode;
 }
 
-export function materialToPixiBlend(material: SwfMaterialState): PixiBlendState {
+export function materialToPixiBlend(
+  material: SwfMaterialState,
+): PixiBlendState {
   switch (material.blendMode) {
     case "multiply":
       return { blendMode: "multiply" };
@@ -50,8 +52,7 @@ export function materialToPixiBlend(material: SwfMaterialState): PixiBlendState 
 
 export function needsGrabPass(material: SwfMaterialState): boolean {
   return (
-    material.shaderKind === "simpleGrab" ||
-    material.shaderKind === "maskedGrab"
+    material.shaderKind === "simpleGrab" || material.shaderKind === "maskedGrab"
   );
 }
 

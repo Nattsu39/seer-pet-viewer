@@ -4,7 +4,7 @@ import {
   splitAtlasBitmap,
   type AtlasTileDesc,
   type AtlasTilePlan,
-} from "@seer/swf-bundle";
+} from "@seer-pet-anim/swf-bundle";
 
 export interface AtlasTileRuntime {
   tile: AtlasTileDesc;

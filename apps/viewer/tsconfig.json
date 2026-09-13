@@ -5,13 +5,13 @@
     "jsx": "preserve",
     "noEmit": true,
     "paths": {
-      "@seer/anim-export": ["../../packages/anim-export/src"],
-      "@seer/anim-export/capture": ["../../packages/anim-export/src/capture.ts"],
-      "@seer/swf-bundle": ["../../packages/swf-bundle/src"],
-      "@seer/swf-bundle/parse": ["../../packages/swf-bundle/src/parse.ts"],
-      "@seer/swf-renderer": ["../../packages/swf-renderer/src"],
-      "@seer/spine-bundle": ["../../packages/spine-bundle/src"],
-      "@seer/spine-renderer": ["../../packages/spine-renderer/src"]
+      "@seer-pet-anim/anim-export": ["../../packages/anim-export/src"],
+      "@seer-pet-anim/anim-export/capture": ["../../packages/anim-export/src/capture.ts"],
+      "@seer-pet-anim/swf-bundle": ["../../packages/swf-bundle/src"],
+      "@seer-pet-anim/swf-bundle/parse": ["../../packages/swf-bundle/src/parse.ts"],
+      "@seer-pet-anim/swf-renderer": ["../../packages/swf-renderer/src"],
+      "@seer-pet-anim/spine-bundle": ["../../packages/spine-bundle/src"],
+      "@seer-pet-anim/spine-renderer": ["../../packages/spine-renderer/src"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.vue", "env.d.ts"],

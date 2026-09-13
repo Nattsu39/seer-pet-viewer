@@ -1,4 +1,4 @@
-import type { BattleViewportLayout } from "@seer/anim-export/capture";
+import type { BattleViewportLayout } from "@seer-pet-anim/anim-export/capture";
 
 export interface SwfExportRootTransform {
   x: number;

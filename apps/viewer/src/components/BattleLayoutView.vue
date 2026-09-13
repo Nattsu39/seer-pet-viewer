@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import PetPicker from "./PetPicker.vue";
-import { SwfPlayer } from "@seer/swf-renderer";
-import { SpinePlayer } from "@seer/spine-renderer";
-import { ensureSwfClipAtlas } from "@seer/swf-bundle/parse";
+import { SwfPlayer } from "@seer-pet-anim/swf-renderer";
+import { SpinePlayer } from "@seer-pet-anim/spine-renderer";
+import { ensureSwfClipAtlas } from "@seer-pet-anim/swf-bundle/parse";
 import { disposePetClip } from "../lib/dispose-pet-clip";
 import { shouldStartSceneDrag } from "../lib/scene-drag";
 import { getEffectiveSwfMaxTextureSize } from "../lib/swf-texture";
@@ -26,7 +26,7 @@ import {
   fitBattleCanvas,
   projectBattlePlacement,
   type BattleSide,
-} from "@seer/battle-layout";
+} from "@seer-pet-anim/battle-layout";
 
 type BattlePlayer = SwfPlayer | SpinePlayer;
 

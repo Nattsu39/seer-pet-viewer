@@ -1,8 +1,35 @@
 {
-  "name": "@seer/swf-renderer",
+  "name": "@seer-pet-anim/swf-renderer",
+  "description": "基于 PixiJS 的赛尔号 SWF 宠物动画播放器",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
+  "license": "MIT",
+  "author": "Nattsu39",
+  "homepage": "https://github.com/Nattsu39/seer-pet-viewer/tree/main/packages/swf-renderer#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nattsu39/seer-pet-viewer.git",
+    "directory": "packages/swf-renderer"
+  },
+  "bugs": "https://github.com/Nattsu39/seer-pet-viewer/issues",
+  "keywords": [
+    "seer",
+    "pixi",
+    "pixijs",
+    "swf",
+    "renderer",
+    "animation"
+  ],
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -12,13 +39,13 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node ../../tools/rewrite-worker-urls.mjs .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
-    "@seer/anim-export": "workspace:*",
-    "@seer/swf-bundle": "workspace:*",
+    "@seer-pet-anim/anim-export": "workspace:*",
+    "@seer-pet-anim/swf-bundle": "workspace:*",
     "pixi.js": "^8.9.2"
   },
   "devDependencies": {

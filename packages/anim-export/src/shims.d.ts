@@ -1,8 +1,3 @@
-declare module "wasm-webp/dist/esm/webp-wasm.wasm?url" {
-  const url: string;
-  export default url;
-}
-
 declare module "wasm-webp/dist/esm/webp-wasm.js" {
   type EmscriptenModule = Record<string, unknown>;
   export default function createModule(

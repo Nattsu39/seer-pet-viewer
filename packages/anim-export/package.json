@@ -1,8 +1,35 @@
 {
-  "name": "@seer/anim-export",
+  "name": "@seer-pet-anim/anim-export",
+  "description": "将捕获的动画帧导出为 GIF / WebP / PNG 序列,含参考缩放、紧裁剪与战斗视口规划",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
+  "license": "MIT",
+  "author": "Nattsu39",
+  "homepage": "https://github.com/Nattsu39/seer-pet-viewer/tree/main/packages/anim-export#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nattsu39/seer-pet-viewer.git",
+    "directory": "packages/anim-export"
+  },
+  "bugs": "https://github.com/Nattsu39/seer-pet-viewer/issues",
+  "keywords": [
+    "seer",
+    "gif",
+    "webp",
+    "png-sequence",
+    "animation-export",
+    "canvas"
+  ],
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -21,12 +48,12 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node ../../tools/rewrite-worker-urls.mjs .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
-    "@seer/battle-layout": "workspace:*",
+    "@seer-pet-anim/battle-layout": "workspace:*",
     "fflate": "^0.8.3",
     "gifenc": "^1.0.3",
     "wasm-webp": "^0.1.0"

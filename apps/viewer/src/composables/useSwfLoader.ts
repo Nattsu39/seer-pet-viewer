@@ -1,10 +1,10 @@
 import { ref } from "vue";
-import type { SwfClipData, SwfClipJson } from "@seer/swf-bundle";
+import type { SwfClipData, SwfClipJson } from "@seer-pet-anim/swf-bundle";
 import {
   parseBundleInWorker,
   loadSwfClipPackage,
   MaterialResolver,
-} from "@seer/swf-bundle";
+} from "@seer-pet-anim/swf-bundle";
 import { withRuntimeAtlasTileWarning } from "../lib/swf-texture";
 
 export function useSwfLoader() {
@@ -69,7 +69,8 @@ export function useSwfLoader() {
   async function loadMaterialBundleFile(file: File) {
     if (!clip.value) return;
     const buffer = await file.arrayBuffer();
-    const { loadMaterialBundle } = await import("@seer/swf-bundle/parse");
+    const { loadMaterialBundle } =
+      await import("@seer-pet-anim/swf-bundle/parse");
     const { count, warnings: w } = await loadMaterialBundle(
       buffer,
       materialResolver,

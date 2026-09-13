@@ -1,5 +1,5 @@
 {
-  "name": "@seer/viewer",
+  "name": "@seer-pet-anim/viewer",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,12 +11,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@seer/anim-export": "workspace:*",
-    "@seer/battle-layout": "workspace:*",
-    "@seer/spine-bundle": "workspace:*",
-    "@seer/spine-renderer": "workspace:*",
-    "@seer/swf-bundle": "workspace:*",
-    "@seer/swf-renderer": "workspace:*",
+    "@seer-pet-anim/anim-export": "workspace:*",
+    "@seer-pet-anim/battle-layout": "workspace:*",
+    "@seer-pet-anim/spine-bundle": "workspace:*",
+    "@seer-pet-anim/spine-renderer": "workspace:*",
+    "@seer-pet-anim/swf-bundle": "workspace:*",
+    "@seer-pet-anim/swf-renderer": "workspace:*",
     "@tanstack/vue-virtual": "^3.13.31",
     "buffer": "^6.0.3",
     "vue": "^3.5.16"

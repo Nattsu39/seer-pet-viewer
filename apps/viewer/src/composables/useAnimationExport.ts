@@ -1,12 +1,12 @@
 import { computed, ref } from "vue";
-import { getExportMaxSide } from "@seer/anim-export/capture";
-import type {
-  BattleCaptureOptions,
-  ExportFormat,
-  ExportProgress,
-  ExportViewportCrop,
-  FrameCaptureSource,
-} from "@seer/anim-export";
+import {
+  type BattleCaptureOptions,
+  type ExportFormat,
+  type ExportProgress,
+  type FrameCaptureSource,
+  type ExportViewportCrop,
+  getExportMaxSide,
+} from "@seer-pet-anim/anim-export";
 
 export type ExportScale = 0.25 | 0.5 | 1 | 2 | 3;
 export type ViewerExportFormat = ExportFormat | "png-sequence";
@@ -35,18 +35,25 @@ export function useAnimationExport() {
     exportProgress.value = null;
 
     const format = exportFormat.value;
-    const onViewportCrop = ({ requested, output, maxSide }: ExportViewportCrop) => {
-      const label = format === "png-sequence" ? "PNG 序列" : format === "gif" ? "GIF" : "WebP";
+    const onViewportCrop = ({
+      requested,
+      output,
+      maxSide,
+    }: ExportViewportCrop) => {
+      const label =
+        format === "png-sequence"
+          ? "PNG 序列"
+          : format === "gif"
+            ? "GIF"
+            : "WebP";
       exportNotice.value = `${label} 最长边上限为 ${maxSide}px，${requested.width}×${requested.height} 已裁剪为 ${output.width}×${output.height}；精灵倍率不变，超出部分不导出。`;
     };
-    const background = exportBackground.value
-      ? backgroundColor
-      : "transparent";
+    const background = exportBackground.value ? backgroundColor : "transparent";
 
     try {
       if (format === "png-sequence") {
         const { exportPngSequence, downloadBlob, buildPngSequenceFilename } =
-          await import("@seer/anim-export");
+          await import("@seer-pet-anim/anim-export");
         const blob = await exportPngSequence(
           source,
           {
@@ -64,7 +71,7 @@ export function useAnimationExport() {
         downloadBlob(blob, buildPngSequenceFilename(petId, sequence));
       } else {
         const { exportAnimation, downloadBlob, buildExportFilename } =
-          await import("@seer/anim-export");
+          await import("@seer-pet-anim/anim-export");
         const blob = await exportAnimation(
           source,
           {
@@ -82,8 +89,7 @@ export function useAnimationExport() {
         downloadBlob(blob, buildExportFilename(petId, sequence, format));
       }
     } catch (err) {
-      exportError.value =
-        err instanceof Error ? err.message : "导出失败";
+      exportError.value = err instanceof Error ? err.message : "导出失败";
     } finally {
       exporting.value = false;
       exportProgress.value = null;

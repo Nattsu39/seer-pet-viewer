@@ -9,7 +9,7 @@ import {
 /**
  * 8192 图集内存对照测量（默认跳过，因为要分配 GiB 级 buffer 并跑满整图循环）。
  *
- *   SWF_ATLAS_MEMORY=1 pnpm --filter @seer/swf-bundle exec vitest run src/atlas-memory.test.ts
+ *   SWF_ATLAS_MEMORY=1 pnpm --filter @seer-pet-anim/swf-bundle exec vitest run src/atlas-memory.test.ts
  *   SWF_ATLAS_MEMORY=1 SWF_ATLAS_MEMORY_SIZE=2048 ...   # 快速版
  *
  * 对照的是优化之前的图集链路：整图复制 → 整图翻转输出 → 整图 bleed scratch → ImageData 副本。

@@ -4,7 +4,10 @@ import { resolve } from "node:path";
 export default defineConfig({
   resolve: {
     alias: {
-      "@seer/swf-bundle": resolve(__dirname, "../swf-bundle/src/index.ts"),
+      "@seer-pet-anim/swf-bundle": resolve(
+        __dirname,
+        "../swf-bundle/src/index.ts",
+      ),
     },
   },
   test: {

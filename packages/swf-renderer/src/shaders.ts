@@ -1,4 +1,4 @@
-import type { SwfBlendMode } from "@seer/swf-bundle";
+import type { SwfBlendMode } from "@seer-pet-anim/swf-bundle";
 
 export const SWF_VERTEX = /* glsl */ `
 in vec2 aPosition;

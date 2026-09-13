@@ -1,5 +1,5 @@
 import { ref, watch } from "vue";
-import type { SwfClipData } from "@seer/swf-bundle";
+import type { SwfClipData } from "@seer-pet-anim/swf-bundle";
 import {
   parseBundleInWorker,
   reparseSwfClipInWorker,
@@ -8,16 +8,16 @@ import {
   SHARED_SWF_MATERIAL_BUNDLE_NAME,
   terminateParserWorker,
   type SwfClipJson,
-} from "@seer/swf-bundle";
-import type { SpineClipData } from "@seer/spine-bundle";
+} from "@seer-pet-anim/swf-bundle";
+import type { SpineClipData } from "@seer-pet-anim/spine-bundle";
 import {
   detectBundleKind,
   parseSpineBundleInWorker,
   loadSpineClipPackage,
   terminateSpineParserWorker,
   type SpineClipJson,
-} from "@seer/spine-bundle";
-import { downloadBlob } from "@seer/anim-export";
+} from "@seer-pet-anim/spine-bundle";
+import { downloadBlob } from "@seer-pet-anim/anim-export";
 import type {
   PetAnimIndexEntry,
   PetAnimSharedBundle,
@@ -184,7 +184,8 @@ export function usePetLoader(options?: {
   }
 
   async function applyMaterialBundleBuffer(buffer: ArrayBuffer) {
-    const { loadMaterialBundle } = await import("@seer/swf-bundle/parse");
+    const { loadMaterialBundle } =
+      await import("@seer-pet-anim/swf-bundle/parse");
     const { count, warnings: w } = await loadMaterialBundle(
       buffer,
       materialResolver,

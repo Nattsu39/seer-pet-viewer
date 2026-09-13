@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseBundleCore, loadMaterialBundle } from "./parse.js";
@@ -6,8 +6,10 @@ import { MaterialResolver } from "./material.js";
 
 const bundlePath = resolve(import.meta.dirname, "../../../ppets_4911.bundle");
 const materialsPath = resolve(import.meta.dirname, "../../../shared-materials.bundle");
+// 夹具为本地游戏素材(不进 git),缺失时跳过,保证 CI 可跑
+const hasFixture = existsSync(bundlePath) && existsSync(materialsPath);
 
-describe("ppets_4911 with shared materials", () => {
+describe.skipIf(!hasFixture)("ppets_4911 with shared materials", () => {
   it("moves_38419 materials differ when shared bundle loaded", async () => {
     const buf = readFileSync(bundlePath);
     const resolverPlain = new MaterialResolver();
@@ -15,7 +17,13 @@ describe("ppets_4911 with shared materials", () => {
 
     const resolverMat = new MaterialResolver();
     const matBuf = readFileSync(materialsPath);
-    await loadMaterialBundle(matBuf, resolverMat);
+    await loadMaterialBundle(
+      matBuf.buffer.slice(
+        matBuf.byteOffset,
+        matBuf.byteOffset + matBuf.byteLength,
+      ),
+      resolverMat,
+    );
     const withMat = await parseBundleCore(buf, "ppets_4911", resolverMat);
 
     const seqPlain = plain.sequences.find((s) => s.name === "moves_38419")!;

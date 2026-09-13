@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { planAtlasTileGrid, sliceQuadAcrossTiles, atlasBitmapPxToMeshUv, splitAtlasBitmap, insetTileSliceQuadUvs } from "./atlas-tile.js";
@@ -6,6 +6,10 @@ import { atlasPixelsToBitmap } from "./atlas.js";
 import { parseBundleCore } from "./parse.js";
 
 const bundlePath = resolve(import.meta.dirname, "../../../ppets_4911.bundle");
+// 夹具为本地游戏素材(不进 git);且该链路需要真实 ImageBitmap/canvas,
+// happy-dom 测试环境缺失 ImageData 时跳过,保证 CI 可跑
+const hasFixture = existsSync(bundlePath);
+const hasCanvasEnv = typeof ImageData !== "undefined";
 
 function sampleLikeShader(
   rgba: Uint8ClampedArray,
@@ -79,7 +83,7 @@ function tileLocalUvToMeshUv(
   return atlasBitmapPxToMeshUv(px, row, logicalW, logicalH);
 }
 
-describe("ppets_4911 tile UV parity", () => {
+describe.skipIf(!hasFixture || !hasCanvasEnv)("ppets_4911 tile UV parity", () => {
   it("matches interior samples on cross-tile quads", async () => {
     const buf = readFileSync(bundlePath);
     const core = await parseBundleCore(buf, "ppets_4911");

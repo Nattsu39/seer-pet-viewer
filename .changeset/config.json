@@ -1,0 +1,20 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
+  "changelog": "@changesets/cli",
+  "commit": false,
+  "access": "public",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "ignore": [],
+  "linked": [],
+  "fixed": [
+    [
+      "@seer-pet-anim/anim-export",
+      "@seer-pet-anim/battle-layout",
+      "@seer-pet-anim/spine-bundle",
+      "@seer-pet-anim/spine-renderer",
+      "@seer-pet-anim/swf-bundle",
+      "@seer-pet-anim/swf-renderer"
+    ]
+  ]
+}
