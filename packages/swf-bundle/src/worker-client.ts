@@ -161,6 +161,7 @@ function toClipData(
     petId: parsed.petId,
     name: parsed.name,
     frameRate: parsed.frameRate,
+    pixelsPerUnit: parsed.pixelsPerUnit,
     atlasWidth: parsed.atlasWidth,
     atlasHeight: parsed.atlasHeight,
     atlas,

@@ -1,4 +1,4 @@
-import { MAX_EXPORT_SIDE } from "./export-dimensions.js";
+import { validateCanvasSize } from "./canvas-size.js";
 
 /** 从可能共享大 buffer 的视图中复制紧凑 RGBA（gifenc 用 Uint32Array(rgba.buffer) 会误读全长） */
 export function copyRgbaPixels(
@@ -8,11 +8,7 @@ export function copyRgbaPixels(
 ): Uint8Array {
   const w = Math.floor(width);
   const h = Math.floor(height);
-  if (w <= 0 || h <= 0 || w > MAX_EXPORT_SIDE || h > MAX_EXPORT_SIDE) {
-    throw new Error(
-      `导出尺寸过大 (${w}×${h})，请降低缩放倍数；最长边上限 ${MAX_EXPORT_SIDE}px`,
-    );
-  }
+  validateCanvasSize(w, h);
   const expected = w * h * 4;
   const out = new Uint8Array(expected);
   if (pixels.length < expected) {

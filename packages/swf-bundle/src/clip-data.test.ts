@@ -1,10 +1,22 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   appendAtlasTileWarning,
   filterAtlasTileWarnings,
   isAtlasTileWarning,
+  loadSwfClipPackage,
+  swfClipDataToJson,
 } from "./clip-data.js";
 import { atlasTileWarning } from "./max-texture-size.js";
+
+afterEach(() => vi.unstubAllGlobals());
+
+it.each([undefined, 200])("preserves original pixel density through package loading and saving (%s)", async (pixelsPerUnit) => {
+  vi.stubGlobal("createImageBitmap", vi.fn(async () => ({ width: 32, height: 32 })));
+  const meta = { petId: 70, name: "pet", frameRate: 24, atlasWidth: 32, atlasHeight: 32, pixelsPerUnit, materialWarnings: [], sequences: [] };
+  const clip = await loadSwfClipPackage(meta, new Blob(), { atlasPrepared: true });
+  expect(clip.pixelsPerUnit).toBe(pixelsPerUnit ?? 100);
+  expect(swfClipDataToJson(clip).pixelsPerUnit).toBe(pixelsPerUnit ?? 100);
+});
 
 describe("appendAtlasTileWarning", () => {
   it("does not warn when atlas fits within the device limit", () => {

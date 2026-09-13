@@ -15,18 +15,18 @@ import {
   Vector3,
 } from "@esotericsoftware/spine-webgl";
 import type { SpineClipData } from "@seer/spine-bundle";
+import { computeSpineNativePixelsPerUnit } from "./export-dimensions.js";
 import { parseAtlasUsesPma, SPINE_PREVIEW_FPS } from "@seer/spine-bundle";
 import {
-  capLayoutVertexBounds,
-  computeReferenceScale,
-  EXPORT_PADDING,
   planBattleViewportExport,
   planReferenceExport,
   resolveReferenceSequence,
-  tightCropRgbaFrames,
+  streamCapturedFrames,
 } from "@seer/anim-export/capture";
 import type {
   BattleCaptureOptions,
+  CaptureOptions,
+  ExportViewport,
   BattleViewportLayout,
 } from "@seer/anim-export";
 import {
@@ -49,7 +49,8 @@ export interface SpinePlayerOptions {
   transparent?: boolean;
 }
 
-export interface SpineCaptureOptions {
+export interface SpineCaptureOptions extends CaptureOptions {
+  viewport?: ExportViewport;
   sequence: string;
   scale: number;
   background: number | "transparent";
@@ -280,114 +281,84 @@ export class SpinePlayer {
     const savedCanvasH = this.canvas.height;
     const savedScaleX = this.skeleton.scaleX;
 
-    this.exportSuspended = true;
-    this.pause();
-
-    let refScale = 1;
-    if (options.battle) {
-      // 战斗视口：锚点为战斗布局中心，不需要参考序列归一
-      if (savedSequence !== options.sequence) {
-        this.setSequence(options.sequence);
-      }
-    } else {
-      const refName = resolveReferenceSequence(this.clip.animations);
-      const refFrameTotal = this.getSequenceFrameCount(refName);
-      if (refFrameTotal <= 0) return;
-
-      if (savedSequence !== refName) {
-        this.setSequence(refName);
-      }
-      // 必须在切到目标序列前步进参考序列求包围盒
-      refScale = computeReferenceScale(
-        this.computeSequenceBounds(refFrameTotal),
-      );
-      if (options.sequence !== refName) {
-        this.setSequence(options.sequence);
-      }
-    }
-
-    const frameTotal = this.frameCount;
-    let bounds = { minX: 0, minY: 0, maxX: 1, maxY: 1 };
-    let layout: { width: number; height: number };
-    let battleLayout: BattleViewportLayout | null = null;
-    if (options.battle) {
-      // 战斗视口固定设计帧尺寸，与序列包围盒无关，无需逐帧扫包围盒
-      battleLayout = planBattleViewportExport(options.battle, options.scale);
-      layout = battleLayout;
-    } else {
-      bounds = capLayoutVertexBounds(this.computeSequenceBounds(frameTotal));
-      layout = planReferenceExport(bounds, refScale, options.scale);
-    }
-    const transparent = options.background === "transparent";
-
-    if (transparent) {
-      this.backgroundColor = 0x000000;
-      this.renderWithAlphaClear = true;
-    } else if (typeof options.background === "number") {
-      this.backgroundColor = options.background;
-      this.renderWithAlphaClear = false;
-    }
-
-    this.syncExportViewport(layout.width, layout.height);
-    if (battleLayout) {
-      this.applyBattleExportCamera(battleLayout);
-      this.skeleton.scaleX = battleLayout.pixelsPerUnitX < 0 ? -1 : 1;
-    } else {
-      this.applyExportCamera(
-        bounds,
-        layout.width,
-        layout.height,
-        EXPORT_PADDING,
-      );
-    }
-
-    const rendered: {
-      index: number;
-      pixels: Uint8Array;
-      width: number;
-      height: number;
-    }[] = [];
-
-    for (let i = 0; i < frameTotal; i++) {
-      this.frameIndex = i;
-      this.applyPose(i / SPINE_PREVIEW_FPS);
-      this.renderExport();
-      const pixels = this.readExportPixels(layout.width, layout.height);
-      rendered.push({
-        index: i,
-        pixels,
-        width: layout.width,
-        height: layout.height,
-      });
-    }
-
-    if (!rendered.length) {
-      throw new Error("未检测到可导出的帧");
-    }
-
-    const frameIndices = rendered.map((frame) => frame.index);
-    // 战斗视口为固定设计帧，紧裁剪会破坏固定尺寸语义，跳过
-    const cropped = battleLayout ? rendered : tightCropRgbaFrames(rendered);
-    // 紧裁剪完成，立即释放全画布原始帧（仅保留帧序号），避免双份全帧共存；
-    // 无可裁剪区域时 cropped 与 rendered 为同一数组，直接沿用原始帧
-    if (cropped !== rendered) {
-      for (const frame of rendered) {
-        frame.pixels = new Uint8Array(0);
-      }
-      rendered.length = 0;
-    }
-
     try {
-      for (let i = 0; i < cropped.length; i++) {
-        const frame = cropped[i]!;
-        yield {
-          index: frameIndices[i]!,
-          pixels: frame.pixels,
-          width: frame.width,
-          height: frame.height,
-        };
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      this.exportSuspended = true;
+      this.pause();
+
+      let refScale = 1;
+      let refBounds = { minX: 0, minY: 0, maxX: 1, maxY: 1 };
+      if (options.battle) {
+        // 战斗视口：锚点为战斗布局中心，不需要参考序列归一
+        if (savedSequence !== options.sequence) {
+          this.setSequence(options.sequence);
+        }
+      } else {
+        const refName = resolveReferenceSequence(this.clip.animations);
+        const refFrameTotal = this.getSequenceFrameCount(refName);
+        if (refFrameTotal <= 0) return;
+
+        if (savedSequence !== refName) {
+          this.setSequence(refName);
+        }
+        // 必须在切到目标序列前步进参考序列求包围盒
+        refBounds = this.computeSequenceBounds(refFrameTotal);
+        refScale = computeSpineNativePixelsPerUnit(this.clip.scale);
+        if (options.sequence !== refName) {
+          this.setSequence(options.sequence);
+        }
       }
+
+      const frameTotal = this.frameCount;
+      let bounds = { minX: 0, minY: 0, maxX: 1, maxY: 1 };
+      let layout: { width: number; height: number; pixelsPerUnitX: number; pixelsPerUnitY: number };
+      let battleLayout: BattleViewportLayout | null = null;
+      let keepViewport = !!options.viewport;
+      if (options.battle) {
+        // 战斗视口固定设计帧尺寸，与序列包围盒无关，无需逐帧扫包围盒
+        battleLayout = planBattleViewportExport(options.battle, options.scale);
+        layout = battleLayout;
+      } else {
+        bounds = options.viewport ? refBounds : this.computeSequenceBounds(frameTotal);
+        const referenceLayout = planReferenceExport(bounds, refScale, options.scale, options.maxSide, undefined, options.viewport);
+        layout = referenceLayout;
+        if (referenceLayout.crop) {
+          bounds = refBounds;
+          keepViewport = true;
+          options.onViewportCrop?.(referenceLayout.crop);
+        }
+      }
+      const transparent = options.background === "transparent";
+
+      if (transparent) {
+        this.backgroundColor = 0x000000;
+        this.renderWithAlphaClear = true;
+      } else if (typeof options.background === "number") {
+        this.backgroundColor = options.background;
+        this.renderWithAlphaClear = false;
+      }
+
+      this.syncExportViewport(layout.width, layout.height);
+      if (battleLayout) {
+        this.applyBattleExportCamera(battleLayout);
+        this.skeleton.scaleX = battleLayout.pixelsPerUnitX < 0 ? -1 : 1;
+      } else {
+        this.applyExportCamera(
+          bounds,
+          layout.pixelsPerUnitX,
+        );
+      }
+
+      const renderFrame = (i: number) => {
+        this.frameIndex = i;
+        this.applyPose(i / SPINE_PREVIEW_FPS);
+        this.renderExport();
+        return {
+          pixels: this.readExportPixels(layout.width, layout.height),
+          width: layout.width,
+          height: layout.height,
+        };
+      };
+      yield* streamCapturedFrames(frameTotal, renderFrame, !battleLayout && !keepViewport);
     } finally {
       this.renderWithAlphaClear = false;
       this.backgroundColor = savedBg;
@@ -403,12 +374,11 @@ export class SpinePlayer {
       } else {
         this.updateCamera(false);
       }
-      if (savedSequence && savedSequence !== options.sequence) {
+      if (savedSequence && savedSequence !== this.state.getCurrent(0)?.animation?.name) {
         this.setSequence(savedSequence);
-      } else {
-        this.frameIndex = savedFrame;
-        this.applyPose(this.frameIndex / SPINE_PREVIEW_FPS);
       }
+      this.frameIndex = savedFrame;
+      this.applyPose(this.frameIndex / SPINE_PREVIEW_FPS);
       this.render();
       this.exportSuspended = false;
       if (wasPlaying) this.play();
@@ -683,16 +653,12 @@ export class SpinePlayer {
 
   private applyExportCamera(
     bounds: { minX: number; minY: number; maxX: number; maxY: number },
-    width: number,
-    height: number,
-    pad = 0,
+    pixelsPerUnit: number,
   ): void {
     const { camera } = this.renderer;
     const bw = bounds.maxX - bounds.minX || 1;
     const bh = bounds.maxY - bounds.minY || 1;
-    const availW = Math.max(1, width - pad * 2);
-    const availH = Math.max(1, height - pad * 2);
-    this.fitZoom = Math.max(bw / availW, bh / availH);
+    this.fitZoom = 1 / pixelsPerUnit;
     camera.zoom = this.fitZoom;
     this.cameraX = bounds.minX + bw / 2;
     this.cameraY = bounds.minY + bh / 2;

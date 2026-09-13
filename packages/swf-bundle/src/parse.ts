@@ -14,6 +14,7 @@ import {
 } from "./atlas-decode.js";
 import { buildFrameMesh } from "./mesh.js";
 import { MaterialResolver, NORMAL_MATERIAL } from "./material.js";
+import { resolveSwfPixelsPerUnit } from "./pixel-scale.js";
 import { extractPetId, isSwfAtlasReleased } from "./clip-data.js";
 import type {
   SwfClipData,
@@ -136,6 +137,10 @@ export async function parseBundleCore(
   }
 
   const { tree } = findSwfClipAsset(bundle);
+  const sprite = tree.Sprite?.m_FileID === 0
+    ? bundle.objects.find((obj) => obj.type === AssetType.Sprite && String(obj.pathId) === String(tree.Sprite.m_PathID)) as import("@arkntools/unity-js").Sprite | undefined
+    : undefined;
+  const pixelsPerUnit = resolveSwfPixelsPerUnit(sprite?.pixelsToUnits);
   const sequences = buildSequences(tree, resolver);
 
   const texture = findAtlasTexture(bundle);
@@ -149,6 +154,7 @@ export async function parseBundleCore(
       petId: extractPetId(fileName, tree.Name),
       name: tree.Name,
       frameRate: tree.FrameRate,
+      pixelsPerUnit,
       atlasWidth: width,
       atlasHeight: height,
       sequences,
@@ -160,6 +166,7 @@ export async function parseBundleCore(
     petId: extractPetId(fileName, tree.Name),
     name: tree.Name,
     frameRate: tree.FrameRate,
+    pixelsPerUnit,
     atlasWidth: width,
     atlasHeight: height,
     atlasPixels: decodeFromSource(source, texture),

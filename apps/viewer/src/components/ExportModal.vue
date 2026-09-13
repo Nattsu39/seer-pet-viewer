@@ -10,6 +10,8 @@ defineProps<{
   open: boolean;
   exporting: boolean;
   exportError: string | null;
+  exportNotice: string | null;
+  exportMaxSide: number;
   exportProgressLabel: string;
   exportFormat: ViewerExportFormat;
   exportScale: ExportScale;
@@ -93,6 +95,8 @@ const modalStyle = computed(
                 )
               "
             >
+              <option :value="0.25">0.25×</option>
+              <option :value="0.5">0.5×</option>
               <option :value="1">1×</option>
               <option :value="2">2×</option>
               <option :value="3">3×</option>
@@ -112,6 +116,8 @@ const modalStyle = computed(
             />
             <span>导出当前背景色</span>
           </label>
+          <small>当前格式最长边上限 {{ exportMaxSide }}px，超限将自动裁剪。</small>
+          <p v-if="exportNotice" class="export-modal-notice" role="status">{{ exportNotice }}</p>
           <p v-if="exportError" class="export-modal-error">{{ exportError }}</p>
         </div>
 
@@ -134,6 +140,7 @@ const modalStyle = computed(
 </template>
 
 <style scoped>
+.export-modal-notice { margin: 0; font-size: 0.85rem; line-height: 1.5; }
 .export-modal-backdrop {
   position: fixed;
   inset: 0;

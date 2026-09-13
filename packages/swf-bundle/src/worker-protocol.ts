@@ -42,6 +42,7 @@ export interface PackedSwfSequenceDescriptor {
 }
 
 export interface PackedSwfBundleDescriptor {
+  pixelsPerUnit?: number;
   petId: number;
   name: string;
   frameRate: number;
@@ -65,6 +66,7 @@ export interface EncodedParsedSwfBundle extends EncodedSwfBundleFrames {
 
 /** 帧数据以外的元信息（图集单独传输） */
 export interface DecodedSwfBundleFrames {
+  pixelsPerUnit?: number;
   petId: number;
   name: string;
   frameRate: number;
@@ -198,6 +200,7 @@ export function encodeSwfBundleFrames(
       petId: data.petId,
       name: data.name,
       frameRate: data.frameRate,
+      pixelsPerUnit: data.pixelsPerUnit,
       atlasWidth: data.atlasWidth,
       atlasHeight: data.atlasHeight,
       materialWarnings: data.materialWarnings.map((warning) => warning),
@@ -345,6 +348,7 @@ export function decodeSwfBundleFrames(
     petId: descriptor.petId,
     name: descriptor.name,
     frameRate: descriptor.frameRate,
+    pixelsPerUnit: descriptor.pixelsPerUnit,
     atlasWidth: descriptor.atlasWidth,
     atlasHeight: descriptor.atlasHeight,
     materialWarnings: descriptor.materialWarnings,

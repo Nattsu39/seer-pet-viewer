@@ -59,6 +59,8 @@ export interface SwfSequence {
 }
 
 export interface SwfClipData {
+  /** 原始 Flash 像素 / 顶点单位，来自 Sprite 的 Pixels Per Unit。 */
+  pixelsPerUnit?: number;
   petId: number;
   name: string;
   frameRate: number;
@@ -70,6 +72,7 @@ export interface SwfClipData {
 }
 
 export interface ParsedSwfBundle {
+  pixelsPerUnit?: number;
   petId: number;
   name: string;
   frameRate: number;
@@ -82,6 +85,7 @@ export interface ParsedSwfBundle {
 }
 
 export interface SwfClipJson {
+  pixelsPerUnit?: number;
   petId: number;
   name: string;
   frameRate: number;

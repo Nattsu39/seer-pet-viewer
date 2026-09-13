@@ -10,15 +10,15 @@ import {
   type Ticker,
 } from "pixi.js";
 import {
-  capLayoutVertexBounds,
-  computeReferenceScale,
   planBattleViewportExport,
   planReferenceExport,
   resolveReferenceSequence,
-  tightCropRgbaFrames,
+  streamCapturedFrames,
 } from "@seer/anim-export/capture";
 import type {
   BattleCaptureOptions,
+  CaptureOptions,
+  ExportViewport,
   BattleViewportLayout,
 } from "@seer/anim-export";
 import { computeSwfBattleExportRootTransform } from "./battle-transform.js";
@@ -31,6 +31,7 @@ import type {
 } from "@seer/swf-bundle";
 import {
   computeSequenceVertexBounds,
+  resolveSwfPixelsPerUnit,
   insetQuadUvs,
   insetTileSliceQuadUvs,
   isSwfContentLayer,
@@ -82,7 +83,8 @@ export interface SwfPlayerOptions {
   transparent?: boolean;
 }
 
-export interface SwfCaptureOptions {
+export interface SwfCaptureOptions extends CaptureOptions {
+  viewport?: ExportViewport;
   sequence: string;
   scale: number;
   background: number | "transparent";
@@ -423,60 +425,57 @@ export class SwfPlayer {
     const savedBgColor = this.app.renderer.background.color;
     const savedBgAlpha = this.app.renderer.background.alpha;
 
-    this.pause();
-    if (this.sequence?.name !== options.sequence) {
-      this.setSequence(options.sequence);
-    }
-
-    const renderFxLayers = options.renderFxLayers ?? true;
-
-    let layoutBounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
-    let layout: { width: number; height: number; pixelsPerUnitX: number; pixelsPerUnitY: number };
-    let battleLayout: BattleViewportLayout | null = null;
-    if (options.battle) {
-      // 战斗视口固定设计帧尺寸，与序列包围盒无关，无需计算顶点包围盒
-      battleLayout = planBattleViewportExport(options.battle, options.scale);
-      layout = battleLayout;
-    } else {
-      const refName = resolveReferenceSequence(
-        this.clip.sequences.map((s) => s.name),
-      );
-      const refSeq = this.clip.sequences.find((s) => s.name === refName);
-      if (!refSeq?.frames.length) return;
-
-      const refScale = computeReferenceScale(
-        computeSequenceVertexBounds(refSeq),
-      );
-      layoutBounds = capLayoutVertexBounds(
-        computeSequenceVertexBounds(seq),
-      );
-      layout = planReferenceExport(layoutBounds, refScale, options.scale);
-    }
-    const transparent = options.background === "transparent";
-
-    const exportRT = RenderTexture.create({
-      width: layout.width,
-      height: layout.height,
-      resolution: 1,
-    });
-    if (transparent) {
-      this.app.renderer.background.alpha = 0;
-      this.app.renderer.background.color = 0;
-    } else {
-      this.app.renderer.background.alpha = 1;
-      this.app.renderer.background.color = options.background;
-    }
-    this.resizeGrabTexture(layout.width, layout.height);
-
-    const rendered: {
-      index: number;
-      pixels: Uint8Array;
-      width: number;
-      height: number;
-    }[] = [];
-
     try {
-      for (let i = 0; i < seq.frames.length; i++) {
+      this.pause();
+      if (this.sequence?.name !== options.sequence) {
+        this.setSequence(options.sequence);
+      }
+
+      const renderFxLayers = options.renderFxLayers ?? true;
+
+      let layoutBounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+      let layout: { width: number; height: number; pixelsPerUnitX: number; pixelsPerUnitY: number };
+      let battleLayout: BattleViewportLayout | null = null;
+      let keepViewport = !!options.viewport;
+      if (options.battle) {
+        // 战斗视口固定设计帧尺寸，与序列包围盒无关，无需计算顶点包围盒
+        battleLayout = planBattleViewportExport(options.battle, options.scale);
+        layout = battleLayout;
+      } else {
+        const refName = resolveReferenceSequence(
+          this.clip.sequences.map((s) => s.name),
+        );
+        const refSeq = this.clip.sequences.find((s) => s.name === refName);
+        if (!refSeq?.frames.length) return;
+
+        const refBounds = computeSequenceVertexBounds(refSeq);
+        const refScale = resolveSwfPixelsPerUnit(this.clip.pixelsPerUnit);
+        layoutBounds = options.viewport ? refBounds : computeSequenceVertexBounds(seq);
+        const referenceLayout = planReferenceExport(layoutBounds, refScale, options.scale, options.maxSide, undefined, options.viewport);
+        layout = referenceLayout;
+        if (referenceLayout.crop) {
+          layoutBounds = refBounds;
+          keepViewport = true;
+          options.onViewportCrop?.(referenceLayout.crop);
+        }
+      }
+      const transparent = options.background === "transparent";
+
+      const exportRT = RenderTexture.create({
+        width: layout.width,
+        height: layout.height,
+        resolution: 1,
+      });
+      if (transparent) {
+        this.app.renderer.background.alpha = 0;
+        this.app.renderer.background.color = 0;
+      } else {
+        this.app.renderer.background.alpha = 1;
+        this.app.renderer.background.color = options.background;
+      }
+      this.resizeGrabTexture(layout.width, layout.height);
+
+      const renderFrame = (i: number) => {
         try {
           this.frameIndex = i;
           if (battleLayout) {
@@ -485,80 +484,38 @@ export class SwfPlayer {
             this.root.position.set(t.x, t.y);
           } else {
             this.applyExportTransform(
-              layoutBounds,
-              layout.width,
-              layout.height,
-              layout.pixelsPerUnitX,
-              layout.pixelsPerUnitY,
+              layoutBounds, layout.width, layout.height,
+              layout.pixelsPerUnitX, layout.pixelsPerUnitY,
             );
           }
           this.renderCurrentFrameMeshes({ renderFxLayers });
-          this.app.renderer.render({
-            container: this.app.stage,
-            target: exportRT,
-            clear: true,
-          });
-          const pixels = readRenderTexturePixels(
-            this.app,
-            exportRT,
-            layout.width,
-            layout.height,
-          );
-          rendered.push({
-            index: i,
-            pixels,
+          this.app.renderer.render({ container: this.app.stage, target: exportRT, clear: true });
+          return {
+            pixels: readRenderTexturePixels(this.app, exportRT, layout.width, layout.height),
             width: layout.width,
             height: layout.height,
-          });
+          };
         } catch (e) {
           throw new Error(
             `导出第 ${i + 1}/${seq.frames.length} 帧失败: ${e instanceof Error ? e.message : e}`,
             { cause: e },
           );
         }
-      }
-    } finally {
-      exportRT.destroy(true);
-    }
-
-    if (!rendered.length) {
-      throw new Error("未检测到可导出的帧");
-    }
-
-    const frameIndices = rendered.map((frame) => frame.index);
-    // 战斗视口为固定设计帧，紧裁剪会破坏固定尺寸语义，跳过
-    const cropped = battleLayout ? rendered : tightCropRgbaFrames(rendered);
-    // 紧裁剪完成，立即释放全画布原始帧（仅保留帧序号），避免双份全帧共存；
-    // 无可裁剪区域时 cropped 与 rendered 为同一数组，直接沿用原始帧
-    if (cropped !== rendered) {
-      for (const frame of rendered) {
-        frame.pixels = new Uint8Array(0);
-      }
-      rendered.length = 0;
-    }
-
-    try {
-      for (let i = 0; i < cropped.length; i++) {
-        const frame = cropped[i]!;
-        yield {
-          index: frameIndices[i]!,
-          pixels: frame.pixels,
-          width: frame.width,
-          height: frame.height,
-        };
-        await new Promise<void>((resolve) =>
-          requestAnimationFrame(() => resolve()),
-        );
+      };
+      try {
+        yield* streamCapturedFrames(seq.frames.length, renderFrame, !battleLayout && !keepViewport);
+      } finally {
+        exportRT.destroy(true);
+        this.syncGrabTextureToRenderer();
       }
     } finally {
       this.app.renderer.background.color = savedBgColor;
       this.app.renderer.background.alpha = savedBgAlpha;
-      if (savedSequence && savedSequence !== options.sequence) {
+      if (savedSequence && savedSequence !== this.sequence?.name) {
         this.setSequence(savedSequence);
-      } else {
-        this.frameIndex = savedFrame;
-        this.renderCurrentFrame();
       }
+      this.frameIndex = savedFrame;
+      this.renderCurrentFrame();
       this.userZoom = savedUserZoom;
       this.root.position.set(savedRootPos.x, savedRootPos.y);
       this.root.scale.set(savedRootScale.x, savedRootScale.y);

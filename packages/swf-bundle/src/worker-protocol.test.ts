@@ -20,6 +20,7 @@ function makeBundle(): ParsedSwfBundle {
     petId: 4911,
     name: "ppets_4911",
     frameRate: 30,
+    pixelsPerUnit: 200,
     atlasWidth: 3,
     atlasHeight: 2,
     atlasPixels: {
@@ -101,6 +102,7 @@ describe("SWF worker binary protocol", () => {
     expect(decoded.petId).toBe(source.petId);
     expect(decoded.name).toBe(source.name);
     expect(decoded.frameRate).toBe(source.frameRate);
+    expect(decoded.pixelsPerUnit).toBe(200);
     expect(decoded.sequences).toHaveLength(2);
     expect(decoded.sequences[0]!.frames).toHaveLength(2);
     expect(Array.from(decoded.sequences[0]!.frames[0]!.mesh.positions)).toEqual(

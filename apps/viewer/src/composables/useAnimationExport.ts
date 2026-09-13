@@ -1,19 +1,23 @@
-import { ref } from "vue";
+import { computed, ref } from "vue";
+import { getExportMaxSide } from "@seer/anim-export/capture";
 import type {
   BattleCaptureOptions,
   ExportFormat,
   ExportProgress,
+  ExportViewportCrop,
   FrameCaptureSource,
 } from "@seer/anim-export";
 
-export type ExportScale = 1 | 2 | 3;
+export type ExportScale = 0.25 | 0.5 | 1 | 2 | 3;
 export type ViewerExportFormat = ExportFormat | "png-sequence";
 
 export function useAnimationExport() {
   const exporting = ref(false);
   const exportError = ref<string | null>(null);
+  const exportNotice = ref<string | null>(null);
   const exportProgress = ref<ExportProgress | null>(null);
   const exportFormat = ref<ViewerExportFormat>("webp");
+  const exportMaxSide = computed(() => getExportMaxSide(exportFormat.value));
   const exportScale = ref<ExportScale>(1);
   const exportBackground = ref(false);
 
@@ -27,9 +31,14 @@ export function useAnimationExport() {
     if (exporting.value) return;
     exporting.value = true;
     exportError.value = null;
+    exportNotice.value = null;
     exportProgress.value = null;
 
     const format = exportFormat.value;
+    const onViewportCrop = ({ requested, output, maxSide }: ExportViewportCrop) => {
+      const label = format === "png-sequence" ? "PNG 序列" : format === "gif" ? "GIF" : "WebP";
+      exportNotice.value = `${label} 最长边上限为 ${maxSide}px，${requested.width}×${requested.height} 已裁剪为 ${output.width}×${output.height}；精灵倍率不变，超出部分不导出。`;
+    };
     const background = exportBackground.value
       ? backgroundColor
       : "transparent";
@@ -46,6 +55,7 @@ export function useAnimationExport() {
             scale: exportScale.value,
             background,
             battle,
+            onViewportCrop,
           },
           (p: ExportProgress) => {
             exportProgress.value = p;
@@ -63,6 +73,7 @@ export function useAnimationExport() {
             background,
             format,
             battle,
+            onViewportCrop,
           },
           (p: ExportProgress) => {
             exportProgress.value = p;
@@ -82,6 +93,8 @@ export function useAnimationExport() {
   return {
     exporting,
     exportError,
+    exportNotice,
+    exportMaxSide,
     exportProgress,
     exportFormat,
     exportScale,

@@ -43,6 +43,8 @@ const {
 const {
   exporting,
   exportError,
+  exportNotice,
+  exportMaxSide,
   exportProgress,
   exportFormat,
   exportScale,
@@ -398,7 +400,7 @@ async function handleExport() {
     currentSequence.value,
     getCanvasBackgroundColor(),
   );
-  if (!exportError.value && props.isMobile) {
+  if (!exportError.value && !exportNotice.value && props.isMobile) {
     closeExportModal();
   }
 }
@@ -613,6 +615,8 @@ defineExpose({ fitView });
             <label class="export-field">
               <span>缩放</span>
               <select v-model.number="exportScale" :disabled="exporting">
+                <option :value="0.25">0.25×</option>
+                <option :value="0.5">0.5×</option>
                 <option :value="1">1×</option>
                 <option :value="2">2×</option>
                 <option :value="3">3×</option>
@@ -626,6 +630,7 @@ defineExpose({ fitView });
               />
               <span>背景色</span>
             </label>
+            <small>当前格式最长边上限 {{ exportMaxSide }}px，超限将自动裁剪。</small>
             <button
               class="export-btn primary"
               :disabled="exporting"
@@ -635,6 +640,7 @@ defineExpose({ fitView });
             </button>
           </section>
         </div>
+        <p v-if="exportNotice && !isMobile" class="export-notice" role="status">{{ exportNotice }}</p>
         <p v-if="exportError && !isMobile" class="export-error">
           {{ exportError }}
         </p>
@@ -646,6 +652,8 @@ defineExpose({ fitView });
       :open="showExportModal"
       :exporting="exporting"
       :export-error="exportError"
+      :export-notice="exportNotice"
+      :export-max-side="exportMaxSide"
       :export-progress-label="exportProgressLabel"
       :export-format="exportFormat"
       :export-scale="exportScale"
@@ -660,6 +668,7 @@ defineExpose({ fitView });
 </template>
 
 <style scoped>
+.export-notice { margin: 8px 0; font-size: 0.85rem; line-height: 1.5; }
 .viewer {
   display: flex;
   flex: 1;
