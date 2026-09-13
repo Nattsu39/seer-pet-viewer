@@ -1,3 +1,5 @@
+import { MAX_ANIMATION_FRAME_SIDE, cropCanvasSize } from "./canvas-size.js";
+import type { ExportViewport, ExportViewportCrop } from "./types.js";
 import {
   cropRgbaPixels,
   findSignificantAlphaBounds,
@@ -22,6 +24,7 @@ export const REFERENCE_SEQUENCE = "standby";
 export const REFERENCE_SEQUENCE_FALLBACKS = ["await"] as const;
 
 export interface ReferenceExportLayout {
+  crop?: ExportViewportCrop;
   width: number;
   height: number;
   scale: number;
@@ -77,6 +80,7 @@ export function capLayoutVertexBounds(
   return bounds;
 }
 
+/** @deprecated 旧版 768px 归一倍率；原始像素导出应传资源自身的像素密度。 */
 export function computeReferenceScale(
   bounds: VertexBounds,
   baseCanvas = BASE_EXPORT_CANVAS,
@@ -126,23 +130,28 @@ export function fitCanvas(
   };
 }
 
+/** 资源像素密度 × 用户倍率；参考序列只决定取景中心，不再归一到 768px。 */
 export function planReferenceExport(
   bounds: VertexBounds,
   refScale: number,
   userScale: number,
-  maxSide = MAX_EXPORT_SIDE,
+  maxSide = MAX_ANIMATION_FRAME_SIDE,
   padding = EXPORT_PADDING,
+  viewport?: ExportViewport,
 ): ReferenceExportLayout {
   const effectiveScale = refScale * userScale;
-  const raw = computeVertexCanvasSize(bounds, effectiveScale, padding);
-  const fitted = fitCanvas(raw.width, raw.height, effectiveScale, maxSide);
+  if (!Number.isFinite(effectiveScale) || refScale <= 0 || userScale <= 0) {
+    throw new Error("导出倍率必须为有限正数");
+  }
+  // 先限制渲染视口，避免为超大动画创建完整画布后才裁剪。
+  const raw = viewport ?? computeVertexCanvasSize(bounds, effectiveScale, padding);
+  const cropped = cropCanvasSize(raw, maxSide);
   return {
-    width: fitted.width,
-    height: fitted.height,
-    scale: fitted.scale,
+    ...cropped,
+    scale: effectiveScale,
     padding,
-    pixelsPerUnitX: fitted.scale,
-    pixelsPerUnitY: fitted.scale,
+    pixelsPerUnitX: effectiveScale,
+    pixelsPerUnitY: effectiveScale,
   };
 }
 

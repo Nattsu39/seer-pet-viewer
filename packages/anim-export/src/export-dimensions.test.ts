@@ -13,6 +13,25 @@ import {
 } from "./export-dimensions.js";
 
 describe("export-dimensions", () => {
+  it.each([0.25, 0.5, 1, 2, 3])("crops oversized sequences at fixed density (%sx)", (userScale) => {
+    const bounds = { minX: -100000, minY: -200000, maxX: 100000, maxY: 200000 };
+    for (const viewport of [{ width: 1920, height: 1080 }, { width: 640, height: 360 }]) {
+      const layout = planReferenceExport(bounds, 3.5, userScale, undefined, undefined, viewport);
+      expect(layout.width).toBe(viewport.width);
+      expect(layout.height).toBe(viewport.height);
+      expect(layout.scale).toBe(3.5 * userScale);
+      expect(layout.pixelsPerUnitX).toBe(layout.scale);
+      expect(layout.pixelsPerUnitY).toBe(layout.scale);
+    }
+  });
+
+  it.each([0, -1, 1.5, NaN, Infinity])("rejects invalid viewport width %s", (width) => {
+    expect(() => planReferenceExport(
+      { minX: 0, minY: 0, maxX: 1, maxY: 1 }, 1, 1,
+      undefined, undefined, { width, height: 1080 },
+    )).toThrow();
+  });
+
   it("resolveReferenceSequence prefers standby then await", () => {
     expect(resolveReferenceSequence(["attack", "standby", "await"])).toBe(
       "standby",
@@ -35,7 +54,7 @@ describe("export-dimensions", () => {
     expect(fitted.height).toBe(960);
   });
 
-  it("planReferenceExport applies user scale then max side cap", () => {
+  it("planReferenceExport preserves user scale beyond the old canvas cap", () => {
     const bounds = { minX: 0, minY: 0, maxX: 100, maxY: 100 };
     const refScale = computeReferenceScale(bounds);
     const at1x = planReferenceExport(bounds, refScale, 1);
@@ -44,8 +63,8 @@ describe("export-dimensions", () => {
     );
 
     const at3x = planReferenceExport(bounds, refScale, 3);
-    expect(Math.max(at3x.width, at3x.height)).toBe(MAX_EXPORT_SIDE);
-    expect(at3x.scale).toBeLessThan(refScale * 3);
+    expect(Math.max(at3x.width, at3x.height)).toBe(2240);
+    expect(at3x.scale).toBe(refScale * 3);
   });
 
   it("computeVertexCanvasSize matches pet_export viewport formula", () => {
@@ -98,7 +117,7 @@ describe("ppets_70 export dimensions", () => {
     expect(layout.scale).toBeCloseTo(326.075, 2);
 
     const at3x = planReferenceExport(refBounds, refScale, 3);
-    expect(Math.max(at3x.width, at3x.height)).toBe(MAX_EXPORT_SIDE);
+    expect(Math.max(at3x.width, at3x.height)).toBe(2240);
   });
 
   it("attack uses standby reference scale with its own bounds", () => {
@@ -123,9 +142,14 @@ describe("ppets_70 export dimensions", () => {
     );
 
     expect(standbyLayout.scale).toBeCloseTo(refScale);
-    expect(attackLayout.width).toBe(1920);
-    expect(attackLayout.height).toBe(791);
-    expect(attackLayout.scale).toBeCloseTo(258.704, 2);
+    expect(attackLayout.width).toBe(2420);
+    expect(attackLayout.height).toBe(997);
+    expect(attackLayout.scale).toBe(standbyLayout.scale);
+    for (const userScale of [2, 3]) {
+      const layout = planReferenceExport(sequenceVertexBounds(attack), refScale, userScale);
+      expect(layout.pixelsPerUnitX).toBe(refScale * userScale);
+      expect(layout.pixelsPerUnitY).toBe(refScale * userScale);
+    }
     expect(
       attackLayout.width !== standbyLayout.width ||
         attackLayout.height !== standbyLayout.height,

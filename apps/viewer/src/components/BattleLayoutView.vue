@@ -669,6 +669,8 @@ onBeforeUnmount(() => {
               disabled
               title="战斗视口固定 1920×1080，已达导出上限，倍率不可调整"
             >
+              <option :value="0.25">0.25×</option>
+              <option :value="0.5">0.5×</option>
               <option :value="1">1×</option>
               <option :value="2">2×</option>
               <option :value="3">3×</option>

@@ -1,3 +1,4 @@
+export { MAX_FRAME_SIDE, MAX_ANIMATION_FRAME_SIDE, MAX_PNG_FRAME_SIDE, getExportMaxSide, cropCanvasSize } from "./canvas-size.js";
 export {
   exportAnimation,
   downloadBlob,
@@ -79,6 +80,8 @@ export type {
 } from "./texture-alignment.js";
 export type {
   CaptureOptions,
+  ExportViewport,
+  ExportViewportCrop,
   CapturedFrame,
   ExportBackground,
   ExportFormat,

@@ -1,4 +1,5 @@
-import { zipSync } from "fflate";
+import { Zip, ZipPassThrough, zipSync } from "fflate";
+import { MAX_PNG_FRAME_SIDE } from "./canvas-size.js";
 import {
   blobFromBytes,
   sanitizeSequenceName,
@@ -34,8 +35,8 @@ class PngFrameEncoder {
       if (!this.offscreen) {
         this.offscreen = new OffscreenCanvas(width, height);
       } else {
-        this.offscreen.width = width;
-        this.offscreen.height = height;
+        if (this.offscreen.width !== width) this.offscreen.width = width;
+        if (this.offscreen.height !== height) this.offscreen.height = height;
       }
       const ctx = this.offscreen.getContext("2d");
       if (!ctx) throw new Error("无法创建 2D 上下文");
@@ -43,8 +44,8 @@ class PngFrameEncoder {
       blob = await this.offscreen.convertToBlob({ type: "image/png" });
     } else {
       if (!this.canvas) this.canvas = document.createElement("canvas");
-      this.canvas.width = width;
-      this.canvas.height = height;
+      if (this.canvas.width !== width) this.canvas.width = width;
+      if (this.canvas.height !== height) this.canvas.height = height;
       const ctx = this.canvas.getContext("2d");
       if (!ctx) throw new Error("无法创建 2D 上下文");
       ctx.putImageData(new ImageData(data, width, height), 0, 0);
@@ -55,6 +56,13 @@ class PngFrameEncoder {
       blob = out;
     }
     return new Uint8Array(await blob.arrayBuffer());
+  }
+
+  dispose(): void {
+    if (this.offscreen) this.offscreen.width = this.offscreen.height = 0;
+    if (this.canvas) this.canvas.width = this.canvas.height = 0;
+    this.offscreen = null;
+    this.canvas = null;
   }
 }
 
@@ -90,7 +98,7 @@ export function buildPngSequenceEntryName(
 
 /**
  * 把整段序列逐帧导出为对齐的 PNG（共用捕获管线的参考布局与全序列紧裁剪），
- * 主线程边捕获边编码、只保留压缩后的 PNG 字节，最后以 store 模式打包为 zip。
+ * 主线程边捕获边编码、逐项写入 store ZIP；以 Blob 块保存归档，避免合并整包字节。
  */
 export async function exportPngSequence(
   source: FrameCaptureSource,
@@ -103,45 +111,55 @@ export async function exportPngSequence(
   }
 
   const encoder = new PngFrameEncoder();
-  const entries: Array<{ name: string; data: Uint8Array }> = [];
+  const chunks: Blob[] = [];
+  const archive = new Zip((error, data) => {
+    if (error) throw error;
+    chunks.push(blobFromBytes(data, ZIP_MIME));
+  });
   let width = 0;
   let height = 0;
   let captured = 0;
 
   try {
-    for await (const frame of source.captureFrames(options)) {
+    for await (const frame of source.captureFrames({ ...options, maxSide: MAX_PNG_FRAME_SIDE })) {
       if (captured === 0) {
         width = frame.width;
         height = frame.height;
-        validateCanvasSize(width, height);
+        validateCanvasSize(width, height, MAX_PNG_FRAME_SIDE);
       }
       const pixels = takeFramePixels(frame, width, height);
       const data = await encoder.encode(pixels, width, height);
-      entries.push({
-        name: buildPngSequenceEntryName(
+      const entry = new ZipPassThrough(
+        buildPngSequenceEntryName(
           options.petId,
           options.sequence,
           captured,
           total,
         ),
-        data,
-      });
+      );
+      archive.add(entry);
+      entry.push(data, true);
       captured++;
       onProgress?.({ phase: "capture", done: captured, total });
     }
   } catch (e) {
+    archive.terminate();
+    chunks.length = 0;
     throw new Error(
       `PNG 序列帧捕获失败（已完成 ${captured}/${total} 帧）: ${e instanceof Error ? e.message : e}`,
       { cause: e },
     );
+  } finally {
+    encoder.dispose();
   }
 
-  if (entries.length === 0) {
+  if (captured === 0) {
+    archive.terminate();
     throw new Error("未能捕获任何帧");
   }
 
   onProgress?.({ phase: "encode", done: 0, total: 1 });
-  const bytes = zipPngSequence(entries);
+  archive.end();
   onProgress?.({ phase: "encode", done: 1, total: 1 });
-  return blobFromBytes(bytes, ZIP_MIME);
+  return new Blob(chunks, { type: ZIP_MIME });
 }

@@ -1,4 +1,5 @@
-import { MAX_EXPORT_SIDE } from "./export-dimensions.js";
+import { MAX_ANIMATION_FRAME_SIDE, validateCanvasSize } from "./canvas-size.js";
+export { validateCanvasSize } from "./canvas-size.js";
 import { createExportWorkerClient, type ExportWorkerClient } from "./export-worker-client.js";
 import { copyRgbaPixels } from "./pixels.js";
 import type {
@@ -53,14 +54,6 @@ export function takeFramePixels(
   return copyRgbaPixels(pixels, width, height);
 }
 
-export function validateCanvasSize(width: number, height: number) {
-  if (width <= 0 || height <= 0 || width > MAX_EXPORT_SIDE || height > MAX_EXPORT_SIDE) {
-    throw new Error(
-      `导出尺寸过大 (${width}×${height})，请降低缩放倍数；最长边上限 ${MAX_EXPORT_SIDE}px`,
-    );
-  }
-}
-
 /**
  * 捕获全部帧（边捕获边转移给编码 worker，主线程不持有全帧副本），
  * 随后编码为 GIF/WebP 动画。无 worker 环境时回退到主线程内联编码。
@@ -70,6 +63,7 @@ export async function exportAnimation(
   options: ExportOptions,
   onProgress?: (progress: ExportProgress) => void,
 ): Promise<Blob> {
+  options = { ...options, maxSide: MAX_ANIMATION_FRAME_SIDE };
   const frameCount = source.getSequenceFrameCount(options.sequence);
   if (frameCount <= 0) {
     throw new Error("当前序列没有可导出的帧");
@@ -107,7 +101,7 @@ async function exportViaWorker(
       if (captured === 0) {
         width = frame.width;
         height = frame.height;
-        validateCanvasSize(width, height);
+        validateCanvasSize(width, height, MAX_ANIMATION_FRAME_SIDE);
         client.begin({
           format: options.format,
           width,
@@ -155,7 +149,7 @@ async function exportInline(
       if (captured === 0) {
         width = frame.width;
         height = frame.height;
-        validateCanvasSize(width, height);
+        validateCanvasSize(width, height, MAX_ANIMATION_FRAME_SIDE);
       }
       frames.push({ ...frame, pixels: takeFramePixels(frame, width, height) });
       captured++;

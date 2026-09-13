@@ -1,10 +1,14 @@
 import { unzipSync } from "fflate";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildPngSequenceEntryName,
   buildPngSequenceFilename,
+  exportPngSequence,
   zipPngSequence,
 } from "./png-sequence.js";
+import type { FrameCaptureSource } from "./types.js";
+
+afterEach(() => vi.unstubAllGlobals());
 
 interface CentralEntry {
   name: string;
@@ -117,5 +121,74 @@ describe("zipPngSequence", () => {
     const out = unzipSync(zip);
     expect(Array.from(out["x_0001.png"]!)).toEqual(Array.from(a));
     expect(Array.from(out["x_0002.png"]!)).toEqual(Array.from(b));
+  });
+});
+
+describe("exportPngSequence streaming", () => {
+  function mockCanvas(encode: () => Promise<Blob>) {
+    const canvases: Array<{ width: number; height: number }> = [];
+    vi.stubGlobal("ImageData", class { constructor(..._args: unknown[]) {} });
+    vi.stubGlobal("OffscreenCanvas", class {
+      constructor(public width: number, public height: number) { canvases.push(this); }
+      getContext() { return { putImageData: vi.fn() }; }
+      convertToBlob = encode;
+    });
+    return canvases;
+  }
+
+  it("encodes each frame before requesting the next and produces a valid store ZIP", async () => {
+    const encoded = [new Uint8Array([137, 80, 78, 71]), new TextEncoder().encode("123456789"), new Uint8Array([42])];
+    const events: string[] = [];
+    let index = 0;
+    const canvases = mockCanvas(async () => {
+      events.push(`encode ${index}`);
+      return new Blob([encoded[index++]!]);
+    });
+    const source: FrameCaptureSource = {
+      getSequenceFrameCount: () => encoded.length,
+      getExportFps: () => 24,
+      async *captureFrames() {
+        for (let i = 0; i < encoded.length; i++) {
+          events.push(`capture ${i}`);
+          yield { index: i, width: 2, height: 2, pixels: new Uint8Array(16) };
+        }
+      },
+    };
+    const blob = await exportPngSequence(source, { petId: 4911, sequence: "attack", scale: 1, background: "transparent" });
+    const zip = new Uint8Array(await blob.arrayBuffer());
+    const entries = readCentralDirectory(zip);
+    const names = ["4911_attack_0001.png", "4911_attack_0002.png", "4911_attack_0003.png"];
+    expect(events).toEqual(["capture 0", "encode 0", "capture 1", "encode 1", "capture 2", "encode 2"]);
+    expect(blob.type).toBe("application/zip");
+    expect(entries.map((e) => e.name)).toEqual(names);
+    for (const [i, entry] of entries.entries()) {
+      expect(entry.method).toBe(0);
+      expect(entry.compressedSize).toBe(encoded[i]!.length);
+      expect(entry.uncompressedSize).toBe(encoded[i]!.length);
+    }
+    expect(entries[1]!.crc32).toBe(0xcbf43926);
+    expect(unzipSync(zip)).toEqual(Object.fromEntries(names.map((name, i) => [name, encoded[i]])));
+    expect(canvases).toHaveLength(1);
+    expect(canvases[0]).toMatchObject({ width: 0, height: 0 });
+  });
+
+  it("closes capture and releases the encoding canvas on failure", async () => {
+    const canvases = mockCanvas(async () => { throw new Error("encoding failed"); });
+    const closeCapture = vi.fn();
+    const source: FrameCaptureSource = {
+      getSequenceFrameCount: () => 2,
+      getExportFps: () => 24,
+      async *captureFrames() {
+        try {
+          yield { index: 0, width: 2, height: 2, pixels: new Uint8Array(16) };
+        } finally {
+          closeCapture();
+        }
+      },
+    };
+    await expect(exportPngSequence(source, { petId: 4911, sequence: "attack", scale: 1, background: "transparent" }))
+      .rejects.toThrow("已完成 0/2 帧）: encoding failed");
+    expect(closeCapture).toHaveBeenCalledOnce();
+    expect(canvases[0]).toMatchObject({ width: 0, height: 0 });
   });
 });

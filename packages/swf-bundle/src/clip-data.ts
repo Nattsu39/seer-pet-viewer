@@ -1,4 +1,5 @@
 import type { SwfClipData, SwfClipJson, ParsedSwfBundle, SwfSequence } from "./types.js";
+import { resolveSwfPixelsPerUnit } from "./pixel-scale.js";
 import {
   atlasTileWarning,
   getMaxTextureSize,
@@ -32,6 +33,7 @@ export function parsedBundleToJson(data: ParsedSwfBundle): SwfClipJson {
     petId: data.petId,
     name: data.name,
     frameRate: data.frameRate,
+    pixelsPerUnit: resolveSwfPixelsPerUnit(data.pixelsPerUnit),
     atlasWidth: data.atlasWidth,
     atlasHeight: data.atlasHeight,
     materialWarnings: data.materialWarnings,
@@ -125,6 +127,7 @@ export async function loadSwfClipPackage(
     petId: meta.petId,
     name: meta.name,
     frameRate: meta.frameRate,
+    pixelsPerUnit: resolveSwfPixelsPerUnit(meta.pixelsPerUnit),
     atlasWidth: meta.atlasWidth,
     atlasHeight: meta.atlasHeight,
     atlas: prepared.bitmap,
