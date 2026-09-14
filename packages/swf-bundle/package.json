@@ -1,7 +1,7 @@
 {
   "name": "@seer-pet-anim/swf-bundle",
   "description": "解析赛尔号 Unity SWF 动画 bundle(ppets),提取 clip 数据、网格与图集材质",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "license": "MIT",
   "author": "Nattsu39",

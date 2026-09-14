@@ -1,7 +1,7 @@
 {
   "name": "@seer-pet-anim/battle-layout",
   "description": "赛尔号战斗场景布局计算(16:9 画布、宠物站位与相机适配,常量逆向自游戏客户端)",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "license": "MIT",
   "author": "Nattsu39",
