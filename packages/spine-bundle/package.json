@@ -1,7 +1,7 @@
 {
   "name": "@seer-pet-anim/spine-bundle",
   "description": "解析赛尔号 Unity Spine bundle(spines),提取骨架 JSON、图集与动画序列",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "license": "MIT",
   "author": "Nattsu39",

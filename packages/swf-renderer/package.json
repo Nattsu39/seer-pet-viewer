@@ -1,7 +1,7 @@
 {
   "name": "@seer-pet-anim/swf-renderer",
   "description": "基于 PixiJS 的赛尔号 SWF 宠物动画播放器",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "license": "MIT",
   "author": "Nattsu39",

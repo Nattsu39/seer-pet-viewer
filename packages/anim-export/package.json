@@ -1,7 +1,7 @@
 {
   "name": "@seer-pet-anim/anim-export",
   "description": "将捕获的动画帧导出为 GIF / WebP / PNG 序列,含参考缩放、紧裁剪与战斗视口规划",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "license": "MIT",
   "author": "Nattsu39",
