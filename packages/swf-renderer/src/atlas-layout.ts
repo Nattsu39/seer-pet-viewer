@@ -1,4 +1,4 @@
-import { Texture, type TextureSource } from "pixi.js";
+import { ImageSource, Texture, type TextureSource } from "pixi.js";
 import {
   planAtlasTileGrid,
   splitAtlasBitmap,
@@ -33,7 +33,7 @@ export async function prepareAtlasTiles(
 ): Promise<SwfAtlasLayout> {
   const plan = planAtlasTileGrid(logicalWidth, logicalHeight, maxTileSize);
   if (!plan) {
-    const texture = Texture.from(atlas);
+    const texture = new Texture({ source: new ImageSource({ resource: atlas }) });
     texture.source.scaleMode = "nearest";
     texture.source.alphaMode = "no-premultiply-alpha";
     return {
@@ -63,7 +63,7 @@ export async function prepareAtlasTiles(
   }
   const tiles = plan.tiles.map((tile, i) => {
     const bitmap = bitmaps[i]!;
-    const texture = Texture.from(bitmap);
+    const texture = new Texture({ source: new ImageSource({ resource: bitmap }) });
     texture.source.scaleMode = "nearest";
     texture.source.alphaMode = "no-premultiply-alpha";
     return { tile, bitmap, texture };

@@ -39,17 +39,20 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node ../../tools/rewrite-worker-urls.mjs .",
+    "build": "node ../../tools/clean-package-dist.mjs && tsc -p tsconfig.json && node ../../tools/rewrite-worker-urls.mjs .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
     "@seer-pet-anim/anim-export": "workspace:*",
-    "@seer-pet-anim/swf-bundle": "workspace:*",
-    "pixi.js": "^8.9.2"
+    "@seer-pet-anim/swf-bundle": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.3",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "pixi.js": "^8.9.2"
+  },
+  "peerDependencies": {
+    "pixi.js": "^8.9.2"
   }
 }

@@ -1,11 +1,19 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  watch,
+} from "vue";
 import PetPicker from "./PetPicker.vue";
 import { SwfPlayer } from "@seer-pet-anim/swf-renderer";
 import { SpinePlayer } from "@seer-pet-anim/spine-renderer";
 import { ensureSwfClipAtlas } from "@seer-pet-anim/swf-bundle/parse";
 import { disposePetClip } from "../lib/dispose-pet-clip";
 import { shouldStartSceneDrag } from "../lib/scene-drag";
+import { playPreviewOnce, togglePreviewPlayback } from "../lib/preview-playback";
 import { getEffectiveSwfMaxTextureSize } from "../lib/swf-texture";
 import { getAnimationLabel } from "../lib/animation-labels";
 import type { PetClip } from "../composables/usePetLoader";
@@ -93,14 +101,18 @@ function zoomBy(factor: number): void {
 }
 
 watch(sceneZoom, () => recomputeStage());
-watch(sceneHost, (el) => {
-  sceneResizeObserver?.disconnect();
-  sceneResizeObserver = null;
-  if (!el) return;
-  sceneResizeObserver = new ResizeObserver(() => recomputeStage());
-  sceneResizeObserver.observe(el);
-  recomputeStage();
-}, { flush: "post" });
+watch(
+  sceneHost,
+  (el) => {
+    sceneResizeObserver?.disconnect();
+    sceneResizeObserver = null;
+    if (!el) return;
+    sceneResizeObserver = new ResizeObserver(() => recomputeStage());
+    sceneResizeObserver.observe(el);
+    recomputeStage();
+  },
+  { flush: "post" },
+);
 
 let dragging = false;
 let dragStart = { x: 0, y: 0 };
@@ -166,10 +178,13 @@ function clearUnderlay(): void {
 interface SideViewState {
   sequence: string;
   playing: boolean;
+  playbackEnded: boolean;
   currentFrame: number;
   frameCount: number;
   host: HTMLElement | null;
   mounting: boolean;
+  mountError: string | null;
+  lastEvent: string;
 }
 
 const players: Record<BattleSide, BattlePlayer | null> = {
@@ -177,6 +192,10 @@ const players: Record<BattleSide, BattlePlayer | null> = {
   right: null,
 };
 const activeClips: Record<BattleSide, PetClip | null> = {
+  left: null,
+  right: null,
+};
+const mountControllers: Record<BattleSide, AbortController | null> = {
   left: null,
   right: null,
 };
@@ -193,10 +212,13 @@ function createSideState(side: BattleSide) {
   const view: SideViewState = reactive({
     sequence: "",
     playing: true,
+    playbackEnded: false,
     currentFrame: 0,
     frameCount: 0,
     host: null,
     mounting: false,
+    mountError: null,
+    lastEvent: "",
   });
 
   watch(
@@ -212,8 +234,10 @@ function createSideState(side: BattleSide) {
     (name) => {
       const player = players[side];
       if (!player || !name) return;
-      player.setSequence(name);
-      if (view.playing) player.play();
+      const result = player.playSequence(name, { loop: true });
+      if (result.ok) view.playbackEnded = false;
+      if (!result.ok) view.mountError = `动作不可播放: ${result.reason}`;
+      if (!view.playing) player.pause();
     },
   );
 
@@ -247,7 +271,7 @@ function sideLoading(side: BattleSide): boolean {
 }
 
 function sideError(side: BattleSide): string | null {
-  return state(side).loader.error.value;
+  return state(side).view.mountError ?? state(side).loader.error.value;
 }
 
 function onSideSelect(
@@ -260,6 +284,8 @@ function onSideSelect(
 
 function clearSide(side: BattleSide): void {
   // 与 onBeforeUnmount 相同的清理：销毁画布并释放 clip，避免残留冻结帧
+  mountControllers[side]?.abort();
+  state(side).view.mounting = false;
   mountTokens[side]++;
   players[side]?.destroy();
   players[side] = null;
@@ -276,6 +302,14 @@ function sideSequenceOptions(side: BattleSide): Array<{
 }> {
   const pet = sidePet(side);
   if (!pet) return [];
+  const available = players[side]?.getSequences();
+  if (available?.length)
+    return available
+      .filter((seq) => seq.playable)
+      .map((seq) => ({
+        value: seq.name,
+        label: `${getAnimationLabel(seq.name)} · ${seq.duration.toFixed(2)} 秒`,
+      }));
   const names =
     pet.type === "swf"
       ? pet.clip.sequences.map((s) => s.name)
@@ -296,7 +330,11 @@ async function mountSidePlayer(side: BattleSide): Promise<void> {
   const st = state(side);
   const pet = st.loader.pet.value;
   const host = st.view.host;
-  if (!pet || !host || st.view.mounting) return;
+  if (!pet || !host) return;
+  mountControllers[side]?.abort();
+  const controller = new AbortController();
+  mountControllers[side] = controller;
+  st.view.mountError = null;
 
   const token = ++mountTokens[side];
   st.view.mounting = true;
@@ -328,6 +366,8 @@ async function mountSidePlayer(side: BattleSide): Promise<void> {
         maxTextureSize: getEffectiveSwfMaxTextureSize(),
         releaseAtlasAfterSplit: pet.bundleBuffer != null,
         releaseAtlasAfterUpload: pet.bundleBuffer != null,
+        clock: "manual",
+        signal: controller.signal,
         mode: "fixed",
         // 双层画布叠加：各自透明，背景色由 .battle-scene 提供
         transparent: true,
@@ -338,6 +378,8 @@ async function mountSidePlayer(side: BattleSide): Promise<void> {
       p.setOnFrameChange(onFrame);
       await p.mount(host, pet.clip, {
         backgroundColor: getCanvasBackgroundColor(),
+        clock: "manual",
+        signal: controller.signal,
         mode: "fixed",
         transparent: true,
       });
@@ -350,11 +392,24 @@ async function mountSidePlayer(side: BattleSide): Promise<void> {
     }
 
     players[side] = player;
+    player.subscribe((event) => {
+      if (mountTokens[side] !== token) return;
+      st.view.lastEvent = event.marker?.name ?? event.type;
+      if (event.type === "complete") {
+        st.view.playbackEnded = true;
+        st.view.playing = false;
+      }
+    });
     st.view.sequence = defaultSequenceOf(pet);
     player.setSequence(st.view.sequence);
+    st.view.playbackEnded = false;
     player.setLoop(true);
     if (st.view.playing) player.play();
     applyLayoutToSide(side);
+  } catch (error) {
+    if (mountTokens[side] === token && !controller.signal.aborted)
+      st.view.mountError =
+        error instanceof Error ? error.message : String(error);
   } finally {
     if (mountTokens[side] === token) st.view.mounting = false;
   }
@@ -388,6 +443,22 @@ watch(canvasBackgroundColor, () => {
   players.left?.setBackgroundColor(bg);
   players.right?.setBackgroundColor(bg);
 });
+
+function sidePlayOnce(side: BattleSide): void {
+  const player = players[side];
+  if (!player) return;
+  playPreviewOnce(player, state(side).view);
+}
+function sideCancel(side: BattleSide): void {
+  players[side]?.cancel();
+  state(side).view.playbackEnded = true;
+  state(side).view.playing = false;
+}
+
+function sideTogglePlayback(side: BattleSide): void {
+  const player = players[side];
+  if (player) togglePreviewPlayback(player, state(side).view);
+}
 
 function sideGotoFrame(side: BattleSide, frame: number): void {
   players[side]?.gotoFrame(frame);
@@ -429,10 +500,29 @@ async function handleExport(): Promise<void> {
   );
 }
 
+// Both canvases consume the same unscaled delta. Each player applies its own speed once.
+let sceneFrame = 0;
+let sceneLastTime = 0;
+onMounted(() => {
+  const tick = (now: number) => {
+    const delta = sceneLastTime ? (now - sceneLastTime) / 1000 : 0;
+    sceneLastTime = now;
+    for (const side of SIDES) {
+      players[side]?.advance(delta);
+      players[side]?.draw();
+    }
+    sceneFrame = requestAnimationFrame(tick);
+  };
+  sceneFrame = requestAnimationFrame(tick);
+});
+
 /* ---------------- 清理 ---------------- */
 
 onBeforeUnmount(() => {
+  cancelAnimationFrame(sceneFrame);
   for (const side of SIDES) {
+    mountControllers[side]?.abort();
+    state(side).view.mounting = false;
     mountTokens[side]++;
     players[side]?.destroy();
     players[side] = null;
@@ -504,11 +594,7 @@ onBeforeUnmount(() => {
           </label>
           <label>
             <span>场景 Y 偏移</span>
-            <input
-              v-model.number="containerWorldY"
-              type="number"
-              step="0.5"
-            />
+            <input v-model.number="containerWorldY" type="number" step="0.5" />
           </label>
           <button type="button" class="compact-btn" @click="resetLayoutTuning">
             重置默认
@@ -584,6 +670,12 @@ onBeforeUnmount(() => {
               换一只
             </button>
           </div>
+          <p v-if="state(side).view.mountError" class="side-error">
+            {{ state(side).view.mountError }}
+          </p>
+          <p v-if="state(side).view.lastEvent" class="hint">
+            动画事件：{{ state(side).view.lastEvent }}
+          </p>
           <p v-if="state(side).view.mounting" class="hint">正在初始化渲染器…</p>
           <div class="side-controls" @click.stop>
             <label class="side-sequence">
@@ -610,7 +702,7 @@ onBeforeUnmount(() => {
                 type="button"
                 class="primary"
                 :disabled="exporting"
-                @click="state(side).view.playing = !state(side).view.playing"
+                @click="sideTogglePlayback(side)"
               >
                 {{ state(side).view.playing ? "暂停" : "播放" }}
               </button>
@@ -620,6 +712,22 @@ onBeforeUnmount(() => {
                 @click="sideStepFrame(side, 1)"
               >
                 下一帧
+              </button>
+            </div>
+            <div class="side-transport">
+              <button
+                type="button"
+                :disabled="exporting"
+                @click="sidePlayOnce(side)"
+              >
+                播放一次
+              </button>
+              <button
+                type="button"
+                :disabled="exporting"
+                @click="sideCancel(side)"
+              >
+                取消动作
               </button>
             </div>
             <div class="side-scrub">
@@ -648,10 +756,10 @@ onBeforeUnmount(() => {
       <section class="panel-group" aria-label="导出设置">
         <span class="group-title">导出（战斗视口）</span>
         <p class="hint">
-          导出{{ selectedSide === "left" ? "左" : "右" }}侧当前序列；
-          画布固定为 1920×1080 战斗设计帧，所有序列同尺寸同比例，
-          超出画布的内容按客户端行为裁剪；设计帧已达导出上限 1920px，
-          倍率固定为 1×
+          导出{{ selectedSide === "left" ? "左" : "右" }}侧当前序列； 画布固定为
+          1920×1080 战斗设计帧，所有序列同尺寸同比例，
+          超出画布的内容按客户端行为裁剪；设计帧已达导出上限 1920px， 倍率固定为
+          1×
         </p>
         <div class="export-controls">
           <label>
@@ -677,7 +785,11 @@ onBeforeUnmount(() => {
             </select>
           </label>
           <label class="check">
-            <input v-model="exportBackground" type="checkbox" :disabled="exporting" />
+            <input
+              v-model="exportBackground"
+              type="checkbox"
+              :disabled="exporting"
+            />
             <span>背景色</span>
           </label>
         </div>

@@ -5,3 +5,5 @@ export {
   SWF_HIGH_PRECISION_ATLAS_MAX_SIDE,
   useHighPrecisionAtlasSampling,
 } from "./swf-shader.js";
+
+export type { AnimationSequence, AnimationMarker, PlaybackEvent, PlayResult } from "@seer-pet-anim/anim-export/playback";

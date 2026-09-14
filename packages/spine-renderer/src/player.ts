@@ -1,4 +1,11 @@
 import {
+  PlaybackClock,
+  type AnimationSequence,
+  type PlaybackEvent,
+  type PlayResult,
+} from "@seer-pet-anim/anim-export/playback";
+import {
+  EventTimeline,
   AnimationState,
   AnimationStateData,
   AtlasAttachmentLoader,
@@ -39,6 +46,8 @@ import {
 import { computeSpineNativePixelsPerUnit } from "./export-dimensions.js";
 
 export interface SpinePlayerOptions {
+  clock?: "auto" | "manual";
+  signal?: AbortSignal;
   backgroundColor?: number;
   /**
    * fixed：跳过 fitToView 的全部触发点，取景完全由调用方通过
@@ -85,6 +94,10 @@ export class SpinePlayer {
   private glTextures: GLTexture[] = [];
   private atlas: TextureAtlas | null = null;
 
+  private clock = new PlaybackClock();
+  private captureClock: PlaybackClock | null = null;
+  private manual = false;
+  private destroyed = false;
   private playing = false;
   private loop = true;
   private frameIndex = 0;
@@ -120,6 +133,25 @@ export class SpinePlayer {
     clip: SpineClipData,
     options: SpinePlayerOptions = {},
   ): Promise<void> {
+    if (this.clip || this.destroyed)
+      throw new Error("Use a fresh player for mounting");
+    try {
+      await this.mountInternal(parent, clip, options);
+    } catch (error) {
+      this.destroy();
+      throw error;
+    }
+  }
+
+  private async mountInternal(
+    parent: HTMLElement,
+    clip: SpineClipData,
+    options: SpinePlayerOptions = {},
+  ): Promise<void> {
+    options.signal?.throwIfAborted();
+    if (this.destroyed)
+      throw new Error("Player destroyed; create a new instance");
+    this.manual = options.clock === "manual";
     this.clip = clip;
     this.backgroundColor = options.backgroundColor ?? 0x1a1a2e;
     this.mountMode = options.mode ?? "fit";
@@ -130,7 +162,7 @@ export class SpinePlayer {
     this.canvas.style.width = "100%";
     this.canvas.style.height = "100%";
     this.canvas.style.touchAction = "none";
-    parent.replaceChildren(this.canvas);
+    parent.appendChild(this.canvas);
 
     this.context = new ManagedWebGLRenderingContext(this.canvas, {
       alpha: true,
@@ -146,7 +178,7 @@ export class SpinePlayer {
     this.atlas = new TextureAtlas(clip.atlasText);
     for (const page of this.atlas.pages) {
       const bitmap = clip.textures.get(page.name);
-      if (!bitmap) {
+      if (!bitmap || bitmap.width <= 0 || bitmap.height <= 0) {
         throw new Error(`缺少纹理页: ${page.name}`);
       }
       page.width = bitmap.width;
@@ -176,23 +208,39 @@ export class SpinePlayer {
       this.setSequence(defaultAnim);
     }
 
+    if (this.destroyed || options.signal?.aborted)
+      throw new DOMException("Mount aborted", "AbortError");
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(parent);
     this.resize();
     this.lastTime = performance.now();
-    this.tick();
+    if (!this.manual) this.tick();
   }
 
   destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.captureClock?.destroy();
+    this.clock.destroy();
+    this.playing = false;
+    this.onFrameChange = undefined;
     cancelAnimationFrame(this.rafId);
     this.resizeObserver?.disconnect();
     this.state?.clearTracks();
     this.renderer?.dispose();
     for (const tex of this.glTextures) tex.dispose();
     this.glTextures = [];
-    this.atlas?.dispose();
+    // Page textures were disposed above; atlas.dispose would dispose them twice.
     this.atlas = null;
     this.canvas?.remove();
+    this.context?.gl.getExtension("WEBGL_lose_context")?.loseContext();
+    this.onViewportChange = undefined;
+    // Drop disposed scene references, including borrowed atlas bitmaps on attachments.
+    this.skeleton = undefined!;
+    this.state = undefined!;
+    this.renderer = undefined!;
+    this.context = undefined!;
+    this.canvas = undefined!;
     this.clip = null;
   }
 
@@ -211,12 +259,26 @@ export class SpinePlayer {
   }
 
   setSequence(name: string): void {
-    if (!this.clip) return;
+    this.selectSequence(name);
+  }
+
+  private selectSequence(name: string): boolean {
+    if (!this.clip || this.destroyed) return false;
     const anim =
       this.skeleton.data.findAnimation(name) ??
       this.skeleton.data.animations.find((a) => a.name === name);
-    if (!anim) return;
+    if (!anim) return false;
 
+    const wasPlaying = this.playing;
+    if (
+      this.clock.select(
+        this.getSequences().find((item) => item.name === name)!,
+      ) === null
+    )
+      return false;
+    this.clock.playing = wasPlaying;
+    this.state.clearTracks();
+    this.skeleton.setToSetupPose();
     this.state.setAnimation(0, anim.name, this.loop);
     this.frameCount = Math.max(1, Math.ceil(anim.duration * SPINE_PREVIEW_FPS));
     this.frameIndex = 0;
@@ -224,33 +286,112 @@ export class SpinePlayer {
     this.updateBounds();
     this.fitToView();
     this.emitFrame();
+    return !this.destroyed;
   }
 
   play(): void {
+    this.clock.playing = true;
     this.playing = true;
     this.lastTime = performance.now();
   }
 
   pause(): void {
+    this.clock.playing = false;
     this.playing = false;
   }
 
   setLoop(loop: boolean): void {
+    this.clock.loop = loop;
     this.loop = loop;
     const entry = this.state.getCurrent(0);
     if (entry) entry.loop = loop;
   }
 
   setSpeed(speed: number): void {
-    this.state.timeScale = speed;
+    this.clock.setSpeed(speed);
   }
 
   gotoFrame(frame: number): void {
     if (!this.frameCount) return;
     this.frameIndex = Math.max(0, Math.min(frame, this.frameCount - 1));
-    this.applyPose(this.frameIndex / SPINE_PREVIEW_FPS);
-    this.render();
+    this.clock.seek(this.frameIndex / SPINE_PREVIEW_FPS);
+    this.applyPose(this.clock.time);
+    if (!this.manual) this.render();
     this.emitFrame();
+  }
+
+  getSequences(): AnimationSequence[] {
+    return (
+      this.skeleton?.data.animations.map((anim) => ({
+        name: anim.name,
+        duration: anim.duration,
+        playable: Number.isFinite(anim.duration) && anim.duration >= 0,
+        markers: anim.timelines
+          .flatMap((timeline) =>
+            timeline instanceof EventTimeline
+              ? timeline.events.map((event) => ({
+                  name: event.data.name,
+                  time: event.time,
+                  data: event,
+                }))
+              : [],
+          )
+          .sort((a, b) => a.time - b.time),
+      })) ?? []
+    );
+  }
+  playSequence(name: string, options: { loop?: boolean } = {}): PlayResult {
+    if (this.destroyed) return { ok: false, reason: "destroyed" };
+    const seq = this.getSequences().find((item) => item.name === name);
+    if (!seq) return { ok: false, reason: "missing" };
+    if (!seq.playable) return { ok: false, reason: "unplayable" };
+    if (!this.selectSequence(name))
+      return {
+        ok: false,
+        reason: this.destroyed ? "destroyed" : "interrupted",
+      };
+    this.setLoop(options.loop ?? false);
+    this.play();
+    return { ok: true, playbackId: this.clock.playbackId };
+  }
+  subscribe(listener: (event: PlaybackEvent) => void): () => void {
+    return this.clock.subscribe(listener);
+  }
+  cancel(): void {
+    this.captureClock?.cancel();
+    this.clock.cancel();
+    this.playing = this.clock.playing;
+  }
+  getTime(): number {
+    return this.clock.time;
+  }
+  seek(seconds: number): void {
+    this.clock.seek(seconds);
+    this.sampleClock();
+  }
+  advance(seconds: number): void {
+    const time = this.clock.time,
+      id = this.clock.playbackId;
+    this.clock.advance(seconds);
+    this.playing = this.clock.playing;
+    if (
+      !this.destroyed &&
+      !this.exportSuspended &&
+      (time !== this.clock.time || id !== this.clock.playbackId)
+    )
+      this.sampleClock();
+  }
+  private sampleClock(): void {
+    if (!this.clip || !this.state.getCurrent(0)) return;
+    this.applyPose(this.clock.time);
+    this.frameIndex = Math.min(
+      this.frameCount - 1,
+      Math.floor(this.clock.time * SPINE_PREVIEW_FPS),
+    );
+    this.emitFrame();
+  }
+  draw(): void {
+    if (!this.destroyed && !this.exportSuspended && this.clip) this.render();
   }
 
   getSequenceFrameCount(name: string): number {
@@ -270,6 +411,7 @@ export class SpinePlayer {
     const anim = this.skeleton.data.findAnimation(options.sequence);
     if (!anim) return;
 
+    if (this.captureClock) throw new Error("Capture already in progress");
     const wasPlaying = this.playing;
     const savedSequence = this.state.getCurrent(0)?.animation?.name;
     const savedFrame = this.frameIndex;
@@ -281,6 +423,9 @@ export class SpinePlayer {
     const savedCanvasH = this.canvas.height;
     const savedScaleX = this.skeleton.scaleX;
 
+    const playbackClock = this.clock;
+    this.captureClock = playbackClock;
+    this.clock = new PlaybackClock();
     try {
       this.exportSuspended = true;
       this.pause();
@@ -400,6 +545,10 @@ export class SpinePlayer {
       this.render();
       this.exportSuspended = false;
       if (wasPlaying) this.play();
+      this.clock = playbackClock;
+      this.captureClock = null;
+      this.playing = playbackClock.playing;
+      this.sampleClock();
     }
   }
 
@@ -435,7 +584,7 @@ export class SpinePlayer {
     };
     this.skeleton.scaleX = scale.x < 0 ? -1 : 1;
     this.skeleton.updateWorldTransform();
-    this.render();
+    if (!this.manual) this.render();
   }
 
   setViewportPosition(x: number, y: number): void {
@@ -566,6 +715,7 @@ export class SpinePlayer {
   private applyPose(time: number): void {
     const entry = this.state.getCurrent(0);
     if (!entry) return;
+    this.skeleton.setToSetupPose();
     entry.trackTime = time;
     this.state.apply(this.skeleton);
     this.skeleton.updateWorldTransform();
@@ -619,23 +769,7 @@ export class SpinePlayer {
     const delta = (now - this.lastTime) / 1000;
     this.lastTime = now;
 
-    if (this.playing) {
-      this.state.update(delta);
-      this.state.apply(this.skeleton);
-      this.skeleton.updateWorldTransform();
-
-      const entry = this.state.getCurrent(0);
-      if (entry) {
-        const nextFrame = Math.floor(entry.trackTime * SPINE_PREVIEW_FPS);
-        if (nextFrame !== this.frameIndex) {
-          this.frameIndex = Math.min(nextFrame, this.frameCount - 1);
-          this.emitFrame();
-        }
-        if (!this.loop && entry.isComplete()) {
-          this.playing = false;
-        }
-      }
-    }
+    this.advance(delta);
 
     if (!this.exportSuspended) {
       this.render();

@@ -133,17 +133,22 @@ export async function splitAtlasBitmap(
   plan: AtlasTilePlan,
 ): Promise<ImageBitmap[]> {
   const out: ImageBitmap[] = [];
-  for (const tile of plan.tiles) {
-    out.push(
-      await createImageBitmap(
-        bitmap,
-        tile.x,
-        tile.y,
-        tile.width,
-        tile.height,
-        { premultiplyAlpha: "none" },
-      ),
-    );
+  try {
+    for (const tile of plan.tiles) {
+      out.push(
+        await createImageBitmap(
+          bitmap,
+          tile.x,
+          tile.y,
+          tile.width,
+          tile.height,
+          { premultiplyAlpha: "none" },
+        ),
+      );
+    }
+  } catch (error) {
+    for (const bitmap of out) bitmap.close();
+    throw error;
   }
   return out;
 }
@@ -214,7 +219,15 @@ export function isQuadCrossTile(
 ): boolean {
   const expanded = expandPixelBounds(pxMin, pyMin, pxMax, pyMax, marginPx);
   for (const tile of plan.tiles) {
-    if (tileContainsExpandedBounds(tile, expanded.pxMin, expanded.pyMin, expanded.pxMax, expanded.pyMax)) {
+    if (
+      tileContainsExpandedBounds(
+        tile,
+        expanded.pxMin,
+        expanded.pyMin,
+        expanded.pxMax,
+        expanded.pyMax,
+      )
+    ) {
       return false;
     }
   }
@@ -231,7 +244,15 @@ export function assignQuadToTile(
 ): number {
   const expanded = expandPixelBounds(pxMin, pyMin, pxMax, pyMax, marginPx);
   for (const tile of plan.tiles) {
-    if (tileContainsExpandedBounds(tile, expanded.pxMin, expanded.pyMin, expanded.pxMax, expanded.pyMax)) {
+    if (
+      tileContainsExpandedBounds(
+        tile,
+        expanded.pxMin,
+        expanded.pyMin,
+        expanded.pxMax,
+        expanded.pyMax,
+      )
+    ) {
       return tile.index;
     }
   }
@@ -474,7 +495,12 @@ export function sliceQuadAcrossTiles(
   addColors?: ArrayLike<number>,
   vertBase?: number,
 ): TileQuadSlice[] {
-  const bounds = getQuadPixelBounds(uvs, quadOffset, logicalWidth, logicalHeight);
+  const bounds = getQuadPixelBounds(
+    uvs,
+    quadOffset,
+    logicalWidth,
+    logicalHeight,
+  );
   const { pxMin, pyMin, pxMax, pyMax } = bounds;
   const vBase = vertBase ?? quadOffset / 2;
   if (pxMax - pxMin < 1e-6 || pyMax - pyMin < 1e-6) {
@@ -525,94 +551,98 @@ export function sliceQuadAcrossTiles(
 
   const slices: TileQuadSlice[] = [];
   for (const tile of intersectingTiles) {
-      const clipMinX = Math.max(pxMin, tile.x);
-      const clipMaxX = Math.min(pxMax, tilePxMax(tile));
-      const clipMinY = Math.max(pyMin, tile.y);
-      const clipMaxY = Math.min(pyMax, tilePyMax(tile));
-      if (clipMinX > clipMaxX || clipMinY > clipMaxY) continue;
+    const clipMinX = Math.max(pxMin, tile.x);
+    const clipMaxX = Math.min(pxMax, tilePxMax(tile));
+    const clipMinY = Math.max(pyMin, tile.y);
+    const clipMaxY = Math.min(pyMax, tilePyMax(tile));
+    if (clipMinX > clipMaxX || clipMinY > clipMaxY) continue;
 
-      const { geomMinX, geomMaxX, geomMinY, geomMaxY } =
-        expandSliceGeometryAtSeams(
-          tile,
-          plan,
-          pxMin,
-          pyMin,
-          pxMax,
-          pyMax,
-          clipMinX,
-          clipMaxX,
-          clipMinY,
-          clipMaxY,
-        );
+    const { geomMinX, geomMaxX, geomMinY, geomMaxY } =
+      expandSliceGeometryAtSeams(
+        tile,
+        plan,
+        pxMin,
+        pyMin,
+        pxMax,
+        pyMax,
+        clipMinX,
+        clipMaxX,
+        clipMinY,
+        clipMaxY,
+      );
 
-      const tu0 = (geomMinX - pxMin) / (pxMax - pxMin);
-      const tu1 = (geomMaxX - pxMin) / (pxMax - pxMin);
-      const tvRow0 = (geomMinY - pyMin) / (pyMax - pyMin);
-      const tvRow1 = (geomMaxY - pyMin) / (pyMax - pyMin);
-      // boundsToQuadUvs：顶点 0/1 在 meshV 高端（图底），3/2 在低端（图顶）；
-      // bilinearQuadPosition 的 tv=0 对应顶点 0→1 边，故像素行坐标需翻转。
-      const tv0 = 1 - tvRow0;
-      const tv1 = 1 - tvRow1;
+    const tu0 = (geomMinX - pxMin) / (pxMax - pxMin);
+    const tu1 = (geomMaxX - pxMin) / (pxMax - pxMin);
+    const tvRow0 = (geomMinY - pyMin) / (pyMax - pyMin);
+    const tvRow1 = (geomMaxY - pyMin) / (pyMax - pyMin);
+    // boundsToQuadUvs：顶点 0/1 在 meshV 高端（图底），3/2 在低端（图顶）；
+    // bilinearQuadPosition 的 tv=0 对应顶点 0→1 边，故像素行坐标需翻转。
+    const tv0 = 1 - tvRow0;
+    const tv1 = 1 - tvRow1;
 
-      const p00 = bilinearQuadPosition(positions, quadOffset, tu0, tv0);
-      const p10 = bilinearQuadPosition(positions, quadOffset, tu1, tv0);
-      const p11 = bilinearQuadPosition(positions, quadOffset, tu1, tv1);
-      const p01 = bilinearQuadPosition(positions, quadOffset, tu0, tv1);
+    const p00 = bilinearQuadPosition(positions, quadOffset, tu0, tv0);
+    const p10 = bilinearQuadPosition(positions, quadOffset, tu1, tv0);
+    const p11 = bilinearQuadPosition(positions, quadOffset, tu1, tv1);
+    const p01 = bilinearQuadPosition(positions, quadOffset, tu0, tv1);
 
-      // 几何在接缝外扩以消除栅格裂缝，但 UV 仍钳在 tile 有效像素内
-      const uvMinX = geomMinX < clipMinX ? clipMinX : geomMinX;
-      const uvMaxX = geomMaxX > clipMaxX ? clipMaxX : geomMaxX;
-      const uvMinY = geomMinY < clipMinY ? clipMinY : geomMinY;
-      const uvMaxY = geomMaxY > clipMaxY ? clipMaxY : geomMaxY;
+    // 几何在接缝外扩以消除栅格裂缝，但 UV 仍钳在 tile 有效像素内
+    const uvMinX = geomMinX < clipMinX ? clipMinX : geomMinX;
+    const uvMaxX = geomMaxX > clipMaxX ? clipMaxX : geomMaxX;
+    const uvMinY = geomMinY < clipMinY ? clipMinY : geomMinY;
+    const uvMaxY = geomMaxY > clipMaxY ? clipMaxY : geomMaxY;
 
-      const cornerMeshUvs = [
-        atlasBitmapPxToMeshUv(uvMinX, uvMinY, logicalWidth, logicalHeight),
-        atlasBitmapPxToMeshUv(uvMaxX, uvMinY, logicalWidth, logicalHeight),
-        atlasBitmapPxToMeshUv(uvMaxX, uvMaxY, logicalWidth, logicalHeight),
-        atlasBitmapPxToMeshUv(uvMinX, uvMaxY, logicalWidth, logicalHeight),
-      ];
-      const sliceUvs = [
-        cornerMeshUvs[0]!.u,
-        cornerMeshUvs[0]!.v,
-        cornerMeshUvs[1]!.u,
-        cornerMeshUvs[1]!.v,
-        cornerMeshUvs[2]!.u,
-        cornerMeshUvs[2]!.v,
-        cornerMeshUvs[3]!.u,
-        cornerMeshUvs[3]!.v,
-      ];
-      remapQuadUvsToTile(sliceUvs, 0, tile, logicalWidth, logicalHeight);
+    const cornerMeshUvs = [
+      atlasBitmapPxToMeshUv(uvMinX, uvMinY, logicalWidth, logicalHeight),
+      atlasBitmapPxToMeshUv(uvMaxX, uvMinY, logicalWidth, logicalHeight),
+      atlasBitmapPxToMeshUv(uvMaxX, uvMaxY, logicalWidth, logicalHeight),
+      atlasBitmapPxToMeshUv(uvMinX, uvMaxY, logicalWidth, logicalHeight),
+    ];
+    const sliceUvs = [
+      cornerMeshUvs[0]!.u,
+      cornerMeshUvs[0]!.v,
+      cornerMeshUvs[1]!.u,
+      cornerMeshUvs[1]!.v,
+      cornerMeshUvs[2]!.u,
+      cornerMeshUvs[2]!.v,
+      cornerMeshUvs[3]!.u,
+      cornerMeshUvs[3]!.v,
+    ];
+    remapQuadUvsToTile(sliceUvs, 0, tile, logicalWidth, logicalHeight);
 
-      const mul: number[] = [];
-      const add: number[] = [];
-      if (mulColors && addColors) {
-        for (const [tu, tv] of [
-          [tu0, tv0],
-          [tu1, tv0],
-          [tu1, tv1],
-          [tu0, tv1],
-        ] as const) {
-          mul.push(...bilinearQuadColor4(mulColors, vBase, tu, tv));
-          add.push(...bilinearQuadColor4(addColors, vBase, tu, tv));
-        }
+    const mul: number[] = [];
+    const add: number[] = [];
+    if (mulColors && addColors) {
+      for (const [tu, tv] of [
+        [tu0, tv0],
+        [tu1, tv0],
+        [tu1, tv1],
+        [tu0, tv1],
+      ] as const) {
+        mul.push(...bilinearQuadColor4(mulColors, vBase, tu, tv));
+        add.push(...bilinearQuadColor4(addColors, vBase, tu, tv));
       }
+    }
 
-      slices.push({
-        tileIndex: tile.index,
-        positions: [
-          p00[0], p00[1],
-          p10[0], p10[1],
-          p11[0], p11[1],
-          p01[0], p01[1],
-        ],
-        uvs: sliceUvs,
-        mulColors: mul,
-        addColors: add,
-        clipPxMin: clipMinX,
-        clipPxMax: clipMaxX,
-        clipPyMin: clipMinY,
-        clipPyMax: clipMaxY,
-      });
+    slices.push({
+      tileIndex: tile.index,
+      positions: [
+        p00[0],
+        p00[1],
+        p10[0],
+        p10[1],
+        p11[0],
+        p11[1],
+        p01[0],
+        p01[1],
+      ],
+      uvs: sliceUvs,
+      mulColors: mul,
+      addColors: add,
+      clipPxMin: clipMinX,
+      clipPxMax: clipMaxX,
+      clipPyMin: clipMinY,
+      clipPyMax: clipMaxY,
+    });
   }
 
   if (slices.length === 0) {

@@ -1,3 +1,4 @@
+import "./buffer-setup.js";
 export {
   parseBundleInWorker,
   reparseSwfClipInWorker,

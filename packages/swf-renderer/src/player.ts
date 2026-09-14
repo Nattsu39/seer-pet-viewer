@@ -1,4 +1,10 @@
 import {
+  PlaybackClock,
+  type AnimationSequence,
+  type PlaybackEvent,
+  type PlayResult,
+} from "@seer-pet-anim/anim-export/playback";
+import {
   Application,
   Container,
   Geometry,
@@ -56,6 +62,9 @@ import {
 } from "./atlas-layout.js";
 
 export interface SwfPlayerOptions {
+  /** Manual mode never starts a ticker; call advance(seconds), then draw(). */
+  clock?: "auto" | "manual";
+  signal?: AbortSignal;
   backgroundColor?: number;
   tint?: [number, number, number, number];
   /** 测试用：覆盖 WebGL MAX_TEXTURE_SIZE（例如强制 4096 验证分块） */
@@ -112,6 +121,16 @@ type TileShaderSet = {
 
 export class SwfPlayer {
   private app!: Application;
+  private clock = new PlaybackClock();
+  private captureClock: PlaybackClock | null = null;
+  private manual = false;
+  private externalRenderer: WebGLRenderer | null = null;
+  private mounting = false;
+  private rejectMount?: () => void;
+  private get renderer() {
+    return this.externalRenderer ?? this.app?.renderer;
+  }
+  private destroyed = false;
   private root = new Container();
   private stage = new Container();
   private texture!: Texture;
@@ -120,9 +139,6 @@ export class SwfPlayer {
   private sequence: SwfSequence | null = null;
   private frameIndex = 0;
   private playing = false;
-  private loop = true;
-  private speed = 1;
-  private accumulator = 0;
   private tint: [number, number, number, number] = [1, 1, 1, 1];
   private grabTexture: RenderTexture | null = null;
   private meshes: Mesh<Geometry, Shader>[] = [];
@@ -156,13 +172,7 @@ export class SwfPlayer {
     zoom: number;
   }) => void;
   private readonly handleTick = (ticker: Ticker): void => {
-    if (!this.playing || !this.sequence) return;
-    this.accumulator += (ticker.deltaMS / 1000) * this.speed;
-    const frameDuration = 1 / (this.clip?.frameRate ?? 24);
-    while (this.accumulator >= frameDuration) {
-      this.accumulator -= frameDuration;
-      this.advanceFrame();
-    }
+    this.advance(ticker.deltaMS / 1000);
   };
   private readonly handleRendererResize = (): void => {
     if (this.mountMode !== "fixed") this.fitToView();
@@ -174,13 +184,30 @@ export class SwfPlayer {
     clip: SwfClipData,
     options: SwfPlayerOptions = {},
   ): Promise<void> {
+    if (this.mounting || this.clip || this.destroyed)
+      throw new Error("Use a fresh player for mounting");
+    options.signal?.throwIfAborted();
+    this.mounting = true;
+    return this.withMountCancellation(options.signal, () =>
+      this.mountStandalone(parent, clip, options),
+    );
+  }
+
+  private async mountStandalone(
+    parent: HTMLElement,
+    clip: SwfClipData,
+    options: SwfPlayerOptions = {},
+  ): Promise<void> {
+    options.signal?.throwIfAborted();
+    this.manual = options.clock === "manual";
     this.clip = clip;
     this.tint = options.tint ?? [1, 1, 1, 1];
     this.mountMode = options.mode ?? "fit";
     this.transparentBackground = options.transparent ?? false;
 
-    this.app = new Application();
-    await this.app.init({
+    const app = new Application();
+    await app.init({
+      autoStart: !this.manual,
       resizeTo: parent,
       // premultiplied 上下文下清屏色必须是 (0,0,0,0)：带主题色 RGB 的 (r,g,b,0)
       // 是非法预乘态，浏览器会合成出白色不透明画布，盖住下层内容
@@ -194,26 +221,113 @@ export class SwfPlayer {
       autoDensity: true,
       preference: "webgl",
     });
+    if (this.destroyed) {
+      app.destroy(true, { children: true });
+      throw new DOMException("Mount aborted", "AbortError");
+    }
+    this.app = app;
     parent.appendChild(this.app.canvas);
     this.hostResizeObserver = new ResizeObserver(() => this.app?.resize());
     this.hostResizeObserver.observe(parent);
 
+    await this.initializeGraphics(this.app.stage, clip, options);
+    this.fitToView();
+    this.renderer.on("resize", this.handleRendererResize);
+    if (!this.manual) this.app.ticker.add(this.handleTick);
+  }
+
+  /** Attach to a borrowed WebGL renderer. Host owns rendering, ordering and masks.
+   * Grab materials require standalone compositing and are explicitly rejected.
+   */
+  async mountInto(
+    parent: Container,
+    renderer: WebGLRenderer,
+    clip: SwfClipData,
+    options: Omit<SwfPlayerOptions, "clock" | "mode"> = {},
+  ): Promise<void> {
+    if (this.mounting || this.clip || this.destroyed)
+      throw new Error("Use a fresh player for mounting");
+    options.signal?.throwIfAborted();
+    const diagnostics = SwfPlayer.getEmbeddingDiagnostics(clip);
+    if (diagnostics.length) throw new Error(diagnostics.join("; "));
+    if (!(renderer instanceof WebGLRenderer))
+      throw new Error("A compatible Pixi WebGLRenderer is required");
+    this.mounting = true;
+    this.externalRenderer = renderer;
+    this.manual = true;
+    this.mountMode = "fixed";
+    this.clip = clip;
+    this.tint = options.tint ?? [1, 1, 1, 1];
+    await this.withMountCancellation(options.signal, () =>
+      this.initializeGraphics(parent, clip, options),
+    );
+  }
+  static getEmbeddingDiagnostics(clip: SwfClipData): string[] {
+    return clip.sequences.some((seq) =>
+      seq.frames.some((frame) =>
+        frame.mesh.subMeshes.some((mesh) => needsGrabPass(mesh.material)),
+      ),
+    )
+      ? [
+          "SWF grab materials require standalone canvas compositing; shared-scene background capture is unsupported",
+        ]
+      : [];
+  }
+  getContainer(): Container {
+    return this.root;
+  }
+
+  private async withMountCancellation(
+    signal: AbortSignal | undefined,
+    work: () => Promise<void>,
+  ): Promise<void> {
+    let onAbort: (() => void) | undefined;
+    try {
+      const aborted = new Promise<never>((_, reject) => {
+        this.rejectMount = () =>
+          reject(new DOMException("Mount aborted", "AbortError"));
+        onAbort = () => this.destroy();
+        signal?.addEventListener("abort", onAbort, { once: true });
+      });
+      await Promise.race([work(), aborted]);
+    } catch (error) {
+      this.destroy();
+      throw error;
+    } finally {
+      if (onAbort) signal?.removeEventListener("abort", onAbort);
+      this.mounting = false;
+      this.rejectMount = undefined;
+    }
+  }
+
+  private async initializeGraphics(
+    parent: Container,
+    clip: SwfClipData,
+    options: SwfPlayerOptions,
+  ): Promise<void> {
+    if (clip.atlas.width <= 0 || clip.atlas.height <= 0)
+      throw new Error("SWF atlas released; restore it before mounting");
     // 超限图集按 MAX_TEXTURE_SIZE 分块上传，保留全分辨率
-    const gl = (this.app.renderer as WebGLRenderer).gl;
+    const gl = (this.renderer as WebGLRenderer).gl;
     const maxTextureSize =
       options.maxTextureSize ??
       (gl.getParameter(gl.MAX_TEXTURE_SIZE) as number);
 
-    this.atlasLayout = await prepareAtlasTiles(
+    const layout = await prepareAtlasTiles(
       clip.atlas,
       clip.atlasWidth,
       clip.atlasHeight,
       maxTextureSize,
       { releaseSource: options.releaseAtlasAfterSplit ?? false },
     );
+    if (this.destroyed || options.signal?.aborted) {
+      destroyAtlasLayout(layout);
+      throw new DOMException("Mount aborted", "AbortError");
+    }
+    this.atlasLayout = layout;
     if (options.releaseAtlasAfterUpload) {
       releaseAtlasLayoutPixels(
-        this.app.renderer as unknown as AtlasUploader,
+        this.renderer as unknown as AtlasUploader,
         this.atlasLayout,
       );
     }
@@ -221,7 +335,7 @@ export class SwfPlayer {
     this.texture = primaryTile.texture;
 
     this.root.addChild(this.stage);
-    this.app.stage.addChild(this.root);
+    parent.addChild(this.root);
 
     if (this.atlasLayout.plan) {
       this.tileShaders = this.atlasLayout.tiles.map((entry) => ({
@@ -294,13 +408,14 @@ export class SwfPlayer {
         true,
       );
     }
-
-    requestAnimationFrame(() => this.fitToView());
-    this.app.renderer.on("resize", this.handleRendererResize);
-    this.app.ticker.add(this.handleTick);
   }
 
   destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.rejectMount?.();
+    this.captureClock?.destroy();
+    this.clock.destroy();
     this.playing = false;
     this.onFrameChange = undefined;
     if (this.tileShaders) {
@@ -329,11 +444,13 @@ export class SwfPlayer {
     this.hostResizeObserver = null;
     if (this.app) {
       this.app.ticker.remove(this.handleTick);
-      this.app.renderer.off("resize", this.handleRendererResize);
+      this.renderer.off("resize", this.handleRendererResize);
       const canvas = this.app.canvas;
       canvas.parentElement?.removeChild(canvas);
       this.app.destroy(true, { children: true });
     }
+    if (!this.root.destroyed) this.root.destroy({ children: true });
+    this.externalRenderer = null;
     this.clip = null;
     this.sequence = null;
   }
@@ -349,38 +466,52 @@ export class SwfPlayer {
   }
 
   setBackgroundColor(color: number): void {
-    if (!this.app?.renderer) return;
+    if (!this.renderer) return;
     // 透明画布不接受背景色：v8 的 background.color setter 会把 alpha 重置为 1，
     // 且非零 RGB 配零 alpha 会破坏 (0,0,0,0) 的合法预乘清屏
-    if (this.transparentBackground) return;
-    this.app.renderer.background.color = color;
+    if (this.transparentBackground || this.externalRenderer) return;
+    this.renderer.background.color = color;
   }
 
   setSequence(name: string): void {
-    if (!this.clip) return;
+    this.selectSequence(name);
+  }
+
+  private selectSequence(name: string): boolean {
+    if (!this.clip || this.destroyed) return false;
     const seq = this.clip.sequences.find((s) => s.name === name);
-    if (!seq) return;
+    if (!seq?.frames.length) return false;
+    const wasPlaying = this.playing;
+    if (
+      this.clock.select(
+        this.getSequences().find((item) => item.name === name)!,
+      ) === null
+    )
+      return false;
+    this.clock.playing = wasPlaying;
     this.sequence = seq;
     this.frameIndex = 0;
-    this.accumulator = 0;
     this.renderCurrentFrame();
     this.fitToView();
+    return !this.destroyed;
   }
 
   play(): void {
+    this.clock.playing = true;
     this.playing = true;
   }
 
   pause(): void {
+    this.clock.playing = false;
     this.playing = false;
   }
 
   setLoop(loop: boolean): void {
-    this.loop = loop;
+    this.clock.loop = loop;
   }
 
   setSpeed(speed: number): void {
-    this.speed = speed;
+    this.clock.setSpeed(speed);
   }
 
   gotoFrame(frame: number): void {
@@ -389,7 +520,83 @@ export class SwfPlayer {
       0,
       Math.min(frame, this.sequence.frames.length - 1),
     );
+    this.clock.seek(this.frameIndex / this.getExportFps());
     this.renderCurrentFrame();
+  }
+
+  getSequences(): AnimationSequence[] {
+    return (
+      this.clip?.sequences.map((seq) => ({
+        name: seq.name,
+        duration: seq.frames.length / this.getExportFps(),
+        playable:
+          seq.frames.length > 0 &&
+          Number.isFinite(this.getExportFps()) &&
+          this.getExportFps() > 0,
+        markers: seq.frames.flatMap((frame, index) =>
+          frame.labels.map((name) => ({
+            name,
+            time: index / this.getExportFps(),
+          })),
+        ),
+      })) ?? []
+    );
+  }
+
+  playSequence(name: string, options: { loop?: boolean } = {}): PlayResult {
+    if (this.destroyed) return { ok: false, reason: "destroyed" };
+    const seq = this.getSequences().find((item) => item.name === name);
+    if (!seq) return { ok: false, reason: "missing" };
+    if (!seq.playable) return { ok: false, reason: "unplayable" };
+    if (!this.selectSequence(name))
+      return {
+        ok: false,
+        reason: this.destroyed ? "destroyed" : "interrupted",
+      };
+    this.setLoop(options.loop ?? false);
+    this.play();
+    return { ok: true, playbackId: this.clock.playbackId };
+  }
+
+  subscribe(listener: (event: PlaybackEvent) => void): () => void {
+    return this.clock.subscribe(listener);
+  }
+  cancel(): void {
+    this.captureClock?.cancel();
+    this.clock.cancel();
+    this.playing = this.clock.playing;
+  }
+  getTime(): number {
+    return this.clock.time;
+  }
+  seek(seconds: number): void {
+    this.clock.seek(seconds);
+    this.sampleClock();
+  }
+  advance(seconds: number): void {
+    const time = this.clock.time,
+      id = this.clock.playbackId;
+    this.clock.advance(seconds);
+    this.playing = this.clock.playing;
+    if (
+      !this.destroyed &&
+      (time !== this.clock.time || id !== this.clock.playbackId)
+    )
+      this.sampleClock();
+  }
+  private sampleClock(): void {
+    if (!this.sequence?.frames.length) return;
+    const next = Math.min(
+      this.sequence.frames.length - 1,
+      Math.floor(this.clock.time * this.getExportFps() + 1e-9),
+    );
+    if (next !== this.frameIndex) {
+      this.frameIndex = next;
+      this.renderCurrentFrame();
+    }
+  }
+  draw(): void {
+    if (!this.destroyed && !this.externalRenderer) this.app?.render();
   }
 
   getFrameIndex(): number {
@@ -412,19 +619,25 @@ export class SwfPlayer {
   async *captureFrames(
     options: SwfCaptureOptions,
   ): AsyncGenerator<SwfCapturedFrame> {
+    if (this.externalRenderer)
+      throw new Error("Capture requires a standalone player");
     if (!this.clip || !this.app) return;
     const seq = this.clip.sequences.find((s) => s.name === options.sequence);
     if (!seq?.frames.length) return;
 
+    if (this.captureClock) throw new Error("Capture already in progress");
     const wasPlaying = this.playing;
     const savedSequence = this.sequence?.name;
     const savedFrame = this.frameIndex;
     const savedUserZoom = this.userZoom;
     const savedRootPos = { x: this.root.position.x, y: this.root.position.y };
     const savedRootScale = { x: this.root.scale.x, y: this.root.scale.y };
-    const savedBgColor = this.app.renderer.background.color;
-    const savedBgAlpha = this.app.renderer.background.alpha;
+    const savedBgColor = this.renderer.background.color;
+    const savedBgAlpha = this.renderer.background.alpha;
 
+    const playbackClock = this.clock;
+    this.captureClock = playbackClock;
+    this.clock = new PlaybackClock();
     try {
       this.pause();
       if (this.sequence?.name !== options.sequence) {
@@ -481,11 +694,11 @@ export class SwfPlayer {
         resolution: 1,
       });
       if (transparent) {
-        this.app.renderer.background.alpha = 0;
-        this.app.renderer.background.color = 0;
+        this.renderer.background.alpha = 0;
+        this.renderer.background.color = 0;
       } else {
-        this.app.renderer.background.alpha = 1;
-        this.app.renderer.background.color = options.background;
+        this.renderer.background.alpha = 1;
+        this.renderer.background.color = options.background;
       }
       this.resizeGrabTexture(layout.width, layout.height);
 
@@ -506,7 +719,7 @@ export class SwfPlayer {
             );
           }
           this.renderCurrentFrameMeshes({ renderFxLayers });
-          this.app.renderer.render({
+          this.renderer.render({
             container: this.app.stage,
             target: exportRT,
             clear: true,
@@ -539,8 +752,8 @@ export class SwfPlayer {
         this.syncGrabTextureToRenderer();
       }
     } finally {
-      this.app.renderer.background.color = savedBgColor;
-      this.app.renderer.background.alpha = savedBgAlpha;
+      this.renderer.background.color = savedBgColor;
+      this.renderer.background.alpha = savedBgAlpha;
       if (savedSequence && savedSequence !== this.sequence?.name) {
         this.setSequence(savedSequence);
       }
@@ -550,16 +763,21 @@ export class SwfPlayer {
       this.root.position.set(savedRootPos.x, savedRootPos.y);
       this.root.scale.set(savedRootScale.x, savedRootScale.y);
       if (this.mountMode === "fixed") {
-        this.app?.render();
+        if (!this.manual && !this.destroyed) this.app?.render();
       } else {
         this.applyTransform(false);
       }
       if (wasPlaying) this.play();
+      this.clock = playbackClock;
+      this.captureClock = null;
+      this.playing = playbackClock.playing;
+      this.sampleClock();
     }
   }
 
   getCanvas(): HTMLCanvasElement {
-    return this.app.canvas as HTMLCanvasElement;
+    return (this.externalRenderer?.canvas ??
+      this.app.canvas) as HTMLCanvasElement;
   }
 
   /** DEV：分块图集纹理与 shader 尺寸诊断 */
@@ -595,7 +813,7 @@ export class SwfPlayer {
   }
 
   fitToView(): void {
-    if (this.mountMode === "fixed" || !this.app) return;
+    if (this.destroyed || this.mountMode === "fixed" || !this.app) return;
     this.userZoom = 1;
     const pad = 40;
     const bw = this.bounds.maxX - this.bounds.minX || 1;
@@ -624,10 +842,10 @@ export class SwfPlayer {
     position: { x: number; y: number },
     scale: { x: number; y: number },
   ): void {
-    if (this.mountMode !== "fixed" || !this.app) return;
+    if (this.mountMode !== "fixed" || !this.renderer) return;
     this.root.position.set(position.x, position.y);
     this.root.scale.set(scale.x, scale.y);
-    this.app.render();
+    if (!this.manual) this.app.render();
   }
 
   setViewportPosition(x: number, y: number): void {
@@ -743,25 +961,10 @@ export class SwfPlayer {
     }
   }
 
-  private advanceFrame(): void {
-    if (!this.sequence) return;
-    const total = this.sequence.frames.length;
-    let next = this.frameIndex + 1;
-    if (next >= total) {
-      if (!this.loop) {
-        this.playing = false;
-        return;
-      }
-      next = 0;
-    }
-    this.frameIndex = next;
-    this.renderCurrentFrame();
-  }
-
   private renderCurrentFrame(): void {
     this.renderCurrentFrameMeshes();
     this.onFrameChange?.(this.frameIndex, this.sequence!.frames.length);
-    this.app?.render();
+    if (!this.manual && !this.destroyed) this.app?.render();
   }
 
   private renderCurrentFrameMeshes(options?: {
@@ -827,7 +1030,7 @@ export class SwfPlayer {
   ): void {
     const renderFx = options?.renderFxLayers ?? true;
     const subMeshes = frame.mesh.subMeshes;
-    for (let i = 0; i < subMeshes.length; ) {
+    for (let i = 0; i < subMeshes.length;) {
       const subMesh = subMeshes[i]!;
       const material = subMesh.material;
 
@@ -1277,9 +1480,9 @@ export class SwfPlayer {
   }
 
   private syncGrabTextureToRenderer(): void {
-    if (!this.app?.renderer) return;
-    const w = Math.max(1, this.app.renderer.width);
-    const h = Math.max(1, this.app.renderer.height);
+    if (!this.renderer) return;
+    const w = Math.max(1, this.renderer.width);
+    const h = Math.max(1, this.renderer.height);
     this.resizeGrabTexture(w, h);
   }
 
@@ -1328,7 +1531,7 @@ export class SwfPlayer {
 
   private snapshotGrab(): void {
     const rt = this.ensureGrabTexture();
-    this.app.renderer.render({
+    this.renderer.render({
       container: this.app.stage,
       target: rt,
       clear: true,

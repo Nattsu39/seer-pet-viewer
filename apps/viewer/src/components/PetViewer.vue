@@ -1,10 +1,24 @@
 <script setup lang="ts">
-import { ref, watch, onBeforeUnmount, computed, nextTick } from "vue";
+import {
+  ref,
+  reactive,
+  toRefs,
+  watch,
+  onBeforeUnmount,
+  computed,
+  nextTick,
+} from "vue";
 import ExportModal from "./ExportModal.vue";
 import { useHistoryOverlay } from "../composables/useHistoryOverlay";
 import { SwfPlayer } from "@seer-pet-anim/swf-renderer";
 import { ensureSwfClipAtlas } from "@seer-pet-anim/swf-bundle/parse";
 import { disposePetClip } from "../lib/dispose-pet-clip";
+import {
+  playPreviewOnce,
+  togglePreviewPlayback,
+  type PreviewPlaybackPlayer,
+  type PreviewPlaybackState,
+} from "../lib/preview-playback";
 import { SpinePlayer } from "@seer-pet-anim/spine-renderer";
 import type { SwfClipData } from "@seer-pet-anim/swf-bundle";
 import { getEffectiveSwfMaxTextureSize } from "../lib/swf-texture";
@@ -55,8 +69,13 @@ const {
 const canvasHost = ref<HTMLElement | null>(null);
 const swfPlayer = ref<SwfPlayer | null>(null);
 const spinePlayer = ref<SpinePlayer | null>(null);
-const currentSequence = ref("");
-const playing = ref(true);
+const playback = reactive<PreviewPlaybackState>({
+  sequence: "",
+  playing: true,
+  playbackEnded: false,
+  mountError: null,
+});
+const { sequence: currentSequence, playing } = toRefs(playback);
 const loop = ref(true);
 const speed = ref(1);
 const currentFrame = ref(0);
@@ -102,7 +121,7 @@ const currentSequenceLabel = computed(() => {
 let fpsFrames = 0;
 let fpsLast = performance.now();
 
-type PlayerControls = {
+type PlayerControls = PreviewPlaybackPlayer & {
   play(): void;
   pause(): void;
   setLoop(loop: boolean): void;
@@ -141,7 +160,21 @@ function syncViewportState(state: { x: number; y: number; zoom: number }) {
   viewportZoom.value = state.zoom.toFixed(2);
 }
 
-async function initSwfPlayer(clip: SwfClipData, bundleBuffer?: ArrayBuffer | null) {
+function trackPlayback(p: SwfPlayer | SpinePlayer) {
+  playback.playbackEnded = false;
+  playback.mountError = null;
+  p.subscribe((event) => {
+    if (event.type === "complete") {
+      playback.playbackEnded = true;
+      playing.value = false;
+    }
+  });
+}
+
+async function initSwfPlayer(
+  clip: SwfClipData,
+  bundleBuffer?: ArrayBuffer | null,
+) {
   spinePlayer.value?.destroy();
   spinePlayer.value = null;
 
@@ -175,6 +208,7 @@ async function initSwfPlayer(clip: SwfClipData, bundleBuffer?: ArrayBuffer | nul
   p.setSequence(currentSequence.value);
   p.setLoop(loop.value);
   p.setSpeed(speed.value);
+  trackPlayback(p);
   if (playing.value) p.play();
   swfPlayer.value = p;
   if (import.meta.env.DEV) {
@@ -217,6 +251,7 @@ async function initSpinePlayer(clip: SpineClipData) {
   p.setSequence(currentSequence.value);
   p.setLoop(loop.value);
   p.setSpeed(speed.value);
+  trackPlayback(p);
   if (playing.value) p.play();
   spinePlayer.value = p;
 }
@@ -234,10 +269,7 @@ async function initPlayer() {
   }
 
   if (props.pet.type === "swf") {
-    await initSwfPlayer(
-      props.pet.clip,
-      props.pet.bundleBuffer ?? null,
-    );
+    await initSwfPlayer(props.pet.clip, props.pet.bundleBuffer ?? null);
   } else {
     await initSpinePlayer(props.pet.clip);
   }
@@ -259,11 +291,14 @@ watch(canvasBackgroundColor, () => {
 
 watch(currentSequence, (name) => {
   syncFrameCount(name);
+  playback.playbackEnded = false;
+  playback.mountError = null;
   if (props.pet.type === "swf") {
     swfPlayer.value?.setSequence(name);
   } else {
     spinePlayer.value?.setSequence(name);
   }
+  activePlayer()?.setLoop(loop.value);
   if (playing.value) activePlayer()?.play();
 });
 
@@ -272,7 +307,13 @@ watch(loop, (v) => activePlayer()?.setLoop(v));
 watch(speed, (v) => activePlayer()?.setSpeed(v));
 
 function togglePlay() {
-  playing.value = !playing.value;
+  const player = activePlayer();
+  if (player) togglePreviewPlayback(player, playback, loop.value);
+}
+
+function playOnce() {
+  const player = activePlayer();
+  if (player) playPreviewOnce(player, playback);
 }
 
 function stepFrame(delta: number) {
@@ -434,7 +475,9 @@ defineExpose({ fitView });
     >
       <div v-if="isMobile && controlsCollapsed" class="controls-collapsed-bar">
         <div class="controls-collapsed-info">
-          <span class="controls-collapsed-label">{{ currentSequenceLabel }}</span>
+          <span class="controls-collapsed-label">{{
+            currentSequenceLabel
+          }}</span>
           <span class="controls-collapsed-frame">
             {{ currentFrame + 1 }}/{{ frameCount }}
           </span>
@@ -478,6 +521,7 @@ defineExpose({ fitView });
       </div>
 
       <div v-show="!isMobile || !controlsCollapsed" class="controls-body">
+        <p v-if="playback.mountError" role="alert">{{ playback.mountError }}</p>
         <div class="controls-row controls-main">
           <div class="controls-main-top">
             <div class="seq-tabs">
@@ -488,7 +532,9 @@ defineExpose({ fitView });
                 @click="currentSequence = seq.value"
               >
                 {{ seq.label }}
-                <span v-if="pet.type === 'swf'" class="count">{{ seq.frames }}</span>
+                <span v-if="pet.type === 'swf'" class="count">{{
+                  seq.frames
+                }}</span>
               </button>
             </div>
             <button
@@ -509,6 +555,7 @@ defineExpose({ fitView });
               {{ playing ? "暂停" : "播放" }}
             </button>
             <button :disabled="exporting" @click="stepFrame(1)">下一帧</button>
+            <button :disabled="exporting" @click="playOnce">播放一次</button>
             <label class="check">
               <input v-model="loop" type="checkbox" :disabled="exporting" />
               循环
@@ -531,7 +578,13 @@ defineExpose({ fitView });
 
           <div class="speed">
             <label>速度 {{ speed.toFixed(2) }}×</label>
-            <input v-model.number="speed" type="range" min="0.25" max="2" step="0.25" />
+            <input
+              v-model.number="speed"
+              type="range"
+              min="0.25"
+              max="2"
+              step="0.25"
+            />
           </div>
         </div>
 
@@ -630,7 +683,9 @@ defineExpose({ fitView });
               />
               <span>背景色</span>
             </label>
-            <small>当前格式最长边上限 {{ exportMaxSide }}px，超限将自动裁剪。</small>
+            <small
+              >当前格式最长边上限 {{ exportMaxSide }}px，超限将自动裁剪。</small
+            >
             <button
               class="export-btn primary"
               :disabled="exporting"
@@ -640,7 +695,9 @@ defineExpose({ fitView });
             </button>
           </section>
         </div>
-        <p v-if="exportNotice && !isMobile" class="export-notice" role="status">{{ exportNotice }}</p>
+        <p v-if="exportNotice && !isMobile" class="export-notice" role="status">
+          {{ exportNotice }}
+        </p>
         <p v-if="exportError && !isMobile" class="export-error">
           {{ exportError }}
         </p>
@@ -668,7 +725,11 @@ defineExpose({ fitView });
 </template>
 
 <style scoped>
-.export-notice { margin: 8px 0; font-size: 0.85rem; line-height: 1.5; }
+.export-notice {
+  margin: 8px 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
 .viewer {
   display: flex;
   flex: 1;
@@ -1227,12 +1288,21 @@ defineExpose({ fitView });
 }
 
 .viewer.mobile .transport {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   width: 100%;
 }
 
 .viewer.mobile .transport button {
-  flex: 1;
+  min-width: 0;
   min-height: 44px;
+  padding: 6px 4px;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.viewer.mobile .transport .check {
+  grid-column: 1 / -1;
 }
 
 .viewer.mobile .controls-row {

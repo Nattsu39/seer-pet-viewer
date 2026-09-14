@@ -58,6 +58,7 @@ export default defineConfig(({ command }) => ({
   ],
   resolve: {
     alias: [
+      { find: "@seer-pet-anim/anim-export/playback", replacement: resolve(__dirname, "../../packages/anim-export/src/playback.ts") },
       {
         find: "@seer-pet-anim/anim-export/texture-alignment",
         replacement: resolve(

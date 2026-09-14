@@ -29,20 +29,25 @@ export async function buildSpineClipData(
   const pma = parseAtlasUsesPma(meta.atlasText);
   const textures = new Map<string, ImageBitmap>();
   const pageScales = new Map<string, number>();
-  for (const tex of textureBuffers) {
-    const prepared = await atlasPixelsToBitmap(
-      {
-        width: tex.width,
-        height: tex.height,
-        rgba: tex.rgba,
-      },
-      { pma },
-    );
-    textures.set(tex.name, prepared.bitmap);
-    pageScales.set(
-      tex.name,
-      pageScale(tex.width, tex.height, prepared.width, prepared.height),
-    );
+  try {
+    for (const tex of textureBuffers) {
+      const prepared = await atlasPixelsToBitmap(
+        {
+          width: tex.width,
+          height: tex.height,
+          rgba: tex.rgba,
+        },
+        { pma },
+      );
+      textures.set(tex.name, prepared.bitmap);
+      pageScales.set(
+        tex.name,
+        pageScale(tex.width, tex.height, prepared.width, prepared.height),
+      );
+    }
+  } catch (error) {
+    for (const bitmap of textures.values()) bitmap.close();
+    throw error;
   }
 
   return {

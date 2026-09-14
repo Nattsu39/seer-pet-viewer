@@ -1,12 +1,8 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
-import { encodeParsedSwfBundle, encodeSwfBundleFrames } from "./worker-protocol.js";
+  encodeParsedSwfBundle,
+  encodeSwfBundleFrames,
+} from "./worker-protocol.js";
 import type { ParsedSwfBundle } from "./types.js";
 
 const testState = vi.hoisted(() => ({
@@ -242,7 +238,9 @@ describe("parseBundleInWorker lifecycle", () => {
       expect(parser.terminated).toBe(true);
     }
     expect(FakeWorker.instances).toHaveLength(3);
-    expect(testState.events.filter((event) => event === "terminate")).toHaveLength(3);
+    expect(
+      testState.events.filter((event) => event === "terminate"),
+    ).toHaveLength(3);
   });
 
   it("rejects active promises on explicit termination and ignores late responses", async () => {
@@ -294,7 +292,9 @@ describe("parseBundleInWorker lifecycle", () => {
   });
 
   it("rejects bitmap and protocol decode failures", async () => {
-    testState.atlasPixelsToBitmap.mockRejectedValueOnce(new Error("bitmap failed"));
+    testState.atlasPixelsToBitmap.mockRejectedValueOnce(
+      new Error("bitmap failed"),
+    );
     const bitmapFailure = client.parseBundleInWorker(requestBuffer(), "bitmap");
     const bitmapWorker = FakeWorker.instances[0]!;
     bitmapWorker.emitMessage(successMessage(1));
@@ -312,7 +312,10 @@ describe("parseBundleInWorker lifecycle", () => {
 
   it("recovers from synchronous worker construction and postMessage errors", async () => {
     FakeWorker.constructError = new Error("constructor failed");
-    const constructFailure = client.parseBundleInWorker(requestBuffer(), "construct");
+    const constructFailure = client.parseBundleInWorker(
+      requestBuffer(),
+      "construct",
+    );
     await expect(constructFailure).rejects.toThrow("constructor failed");
 
     FakeWorker.constructError = null;
@@ -418,5 +421,49 @@ describe("reparseSwfClipInWorker / extractAtlasBitmapInWorker", () => {
     const bitmap = await result;
     expect(bitmap).toMatchObject({ width: 2, height: 1 });
     expect(testState.atlasPixelsToBitmap).toHaveBeenCalled();
+  });
+  it("cancels one parse and discards its late bitmap without cancelling a neighbour", async () => {
+    const controller = new AbortController();
+    const a = client.parseBundleInWorker(requestBuffer(), "a", undefined, {
+      signal: controller.signal,
+    });
+    const b = client.parseBundleInWorker(requestBuffer(), "b");
+    const parser = FakeWorker.instances[0]!;
+    const failed = expect(a).rejects.toMatchObject({ name: "AbortError" });
+    controller.abort();
+    await failed;
+    const discarded = { close: vi.fn() } as unknown as ImageBitmap;
+    parser.emitMessage(bitmapMessage(1, discarded));
+    expect(discarded.close).toHaveBeenCalledOnce();
+    const atlas = {
+      width: 2,
+      height: 1,
+      close: vi.fn(),
+    } as unknown as ImageBitmap;
+    parser.emitMessage(bitmapMessage(2, atlas));
+    await expect(b).resolves.toMatchObject({ atlas });
+  });
+  it("disposes a bitmap completed after cancellation during conversion", async () => {
+    let finish!: (value: unknown) => void;
+    testState.atlasPixelsToBitmap.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const controller = new AbortController();
+    const a = client.parseBundleInWorker(requestBuffer(), "a", undefined, {
+      signal: controller.signal,
+    });
+    FakeWorker.instances[0]!.emitMessage(successMessage(1));
+    const failed = expect(a).rejects.toMatchObject({ name: "AbortError" });
+    controller.abort();
+    await failed;
+    const bitmap = {
+      width: 2,
+      height: 1,
+      close: vi.fn(),
+    } as unknown as ImageBitmap;
+    finish({ bitmap });
+    await vi.waitFor(() => expect(bitmap.close).toHaveBeenCalledOnce());
   });
 });

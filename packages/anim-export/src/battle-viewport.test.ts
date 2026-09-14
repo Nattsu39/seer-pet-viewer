@@ -7,7 +7,7 @@ import { planBattleViewportExport } from "./battle-viewport.js";
 
 describe("planBattleViewportExport", () => {
   it("左侧指定单位像素比：固定 1920×1080 设计帧，锚点像素位置恒定", () => {
-    const layout = planBattleViewportExport({ side: "left", pxPerUnit: 30 }, 1);
+    const layout = planBattleViewportExport({ side: "left", pxPerUnit: 100 }, 1);
     expect(layout.width).toBe(1920);
     expect(layout.height).toBe(1080);
     expect(layout.originX).toBeCloseTo(560);
@@ -17,7 +17,7 @@ describe("planBattleViewportExport", () => {
   });
 
   it("右侧镜像：同画布，锚点与左侧对称，pixelsPerUnitX 为负", () => {
-    const layout = planBattleViewportExport({ side: "right", pxPerUnit: 30 }, 1);
+    const layout = planBattleViewportExport({ side: "right", pxPerUnit: 100 }, 1);
     expect(layout.width).toBe(1920);
     expect(layout.height).toBe(1080);
     expect(layout.originX).toBeCloseTo(1360);
@@ -48,7 +48,7 @@ describe("planBattleViewportExport", () => {
   });
 
   it("用户倍率使整帧超过 MAX_EXPORT_SIDE 时等比钳回，输出与 1× 一致", () => {
-    const layout = planBattleViewportExport({ side: "left", pxPerUnit: 30 }, 3);
+    const layout = planBattleViewportExport({ side: "left", pxPerUnit: 100 }, 3);
     expect(Math.max(layout.width, layout.height)).toBeLessThanOrEqual(
       MAX_EXPORT_SIDE,
     );
@@ -59,7 +59,7 @@ describe("planBattleViewportExport", () => {
   });
 
   it("maxSide 放宽后倍率生效：2× → 3840×2160，锚点与密度同倍放大", () => {
-    const layout = planBattleViewportExport({ side: "left", pxPerUnit: 30 }, 2, 4096);
+    const layout = planBattleViewportExport({ side: "left", pxPerUnit: 100 }, 2, 4096);
     expect(layout.width).toBe(3840);
     expect(layout.height).toBe(2160);
     expect(layout.pixelsPerUnitX).toBeCloseTo(250);

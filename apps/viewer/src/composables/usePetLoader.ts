@@ -1,3 +1,4 @@
+import { disposePetClip } from "../lib/dispose-pet-clip";
 import { ref, watch } from "vue";
 import type { SwfClipData } from "@seer-pet-anim/swf-bundle";
 import {
@@ -6,7 +7,6 @@ import {
   loadSwfClipPackage,
   MaterialResolver,
   SHARED_SWF_MATERIAL_BUNDLE_NAME,
-  terminateParserWorker,
   type SwfClipJson,
 } from "@seer-pet-anim/swf-bundle";
 import type { SpineClipData } from "@seer-pet-anim/spine-bundle";
@@ -14,7 +14,6 @@ import {
   detectBundleKind,
   parseSpineBundleInWorker,
   loadSpineClipPackage,
-  terminateSpineParserWorker,
   type SpineClipJson,
 } from "@seer-pet-anim/spine-bundle";
 import { downloadBlob } from "@seer-pet-anim/anim-export";
@@ -81,6 +80,13 @@ export function usePetLoader(options?: {
     warningsVisible.value = true;
   });
 
+  let loadController = new AbortController();
+  function beginLoad() {
+    loadController.abort();
+    loadController = new AbortController();
+    return loadController;
+  }
+
   let lastSwfBuffer: ArrayBuffer | null = null;
   let lastSwfFileName = "";
   let sharedMaterialRemoteLoaded = false;
@@ -118,8 +124,13 @@ export function usePetLoader(options?: {
     return out;
   }
 
-  async function parseBundleBuffer(buffer: ArrayBuffer, fileName: string) {
+  async function parseBundleBuffer(
+    buffer: ArrayBuffer,
+    fileName: string,
+    signal: AbortSignal,
+  ) {
     const kind = await detectBundleKind(buffer);
+    signal.throwIfAborted();
     if (kind === "video") {
       throw new Error("不支持的视频 bundle（VideoClip）");
     }
@@ -130,7 +141,13 @@ export function usePetLoader(options?: {
     if (kind === "spine") {
       lastSwfBuffer = null;
       lastSwfFileName = "";
-      const clip = await parseSpineBundleInWorker(buffer.slice(0), fileName);
+      const clip = await parseSpineBundleInWorker(buffer.slice(0), fileName, {
+        signal,
+      });
+      if (signal.aborted) {
+        disposePetClip({ type: "spine", clip });
+        signal.throwIfAborted();
+      }
       pet.value = { type: "spine", clip };
     } else {
       lastSwfBuffer = buffer.slice(0);
@@ -139,7 +156,12 @@ export function usePetLoader(options?: {
         lastSwfBuffer,
         lastSwfFileName,
         materialSnapshot(),
+        { signal },
       );
+      if (signal.aborted) {
+        disposePetClip({ type: "swf", clip });
+        signal.throwIfAborted();
+      }
       pet.value = { type: "swf", clip, bundleBuffer: lastSwfBuffer };
       warnings.value = buildSwfWarnings(clip.materialWarnings, clip);
     }
@@ -159,6 +181,7 @@ export function usePetLoader(options?: {
   }
 
   async function loadBundleFile(file: File) {
+    const controller = beginLoad();
     loading.value = true;
     error.value = null;
     remoteLoadContext.value = null;
@@ -171,25 +194,30 @@ export function usePetLoader(options?: {
         await tryAutoImportSharedMaterials();
       }
       loadingMessage.value = `正在解析 ${file.name}…`;
-      await parseBundleBuffer(buffer, file.name);
+      await parseBundleBuffer(buffer, file.name, controller.signal);
       parseMs.value = Math.round(performance.now() - t0);
     } catch (e) {
+      if (controller.signal.aborted) return;
       error.value = e instanceof Error ? e.message : String(e);
       pet.value = null;
     } finally {
-      loading.value = false;
-      loadingMessage.value = null;
-      clearDownloadProgress();
+      if (loadController === controller) {
+        loading.value = false;
+        loadingMessage.value = null;
+        clearDownloadProgress();
+      }
     }
   }
 
   async function applyMaterialBundleBuffer(buffer: ArrayBuffer) {
+    const controller = loadController;
     const { loadMaterialBundle } =
       await import("@seer-pet-anim/swf-bundle/parse");
     const { count, warnings: w } = await loadMaterialBundle(
       buffer,
       materialResolver,
     );
+    controller.signal.throwIfAborted();
     materialCount.value = materialResolver.size;
 
     if (pet.value?.type === "swf" && lastSwfBuffer) {
@@ -200,6 +228,7 @@ export function usePetLoader(options?: {
         lastSwfFileName,
         materialSnapshot(),
         pet.value.clip.atlas,
+        { signal: controller.signal },
       );
       pet.value = { type: "swf", clip, bundleBuffer: lastSwfBuffer };
       warnings.value = buildSwfWarnings(
@@ -252,6 +281,7 @@ export function usePetLoader(options?: {
       return;
     }
 
+    const controller = beginLoad();
     loading.value = true;
     error.value = null;
     cdnFileTooLarge.value = false;
@@ -271,17 +301,24 @@ export function usePetLoader(options?: {
       });
       clearDownloadProgress();
       loadingMessage.value = `正在解析精灵 ${petLabel(entry)}…`;
-      await parseBundleBuffer(buffer, `${entry.name}.bundle`);
+      await parseBundleBuffer(
+        buffer,
+        `${entry.name}.bundle`,
+        controller.signal,
+      );
       parseMs.value = Math.round(performance.now() - t0);
       remoteLoadContext.value = null;
     } catch (e) {
+      if (controller.signal.aborted) return;
       error.value = formatRemoteLoadError(e);
       cdnFileTooLarge.value = e instanceof CdnFileTooLargeError;
       pet.value = null;
     } finally {
-      loading.value = false;
-      loadingMessage.value = null;
-      clearDownloadProgress();
+      if (loadController === controller) {
+        loading.value = false;
+        loadingMessage.value = null;
+        clearDownloadProgress();
+      }
     }
   }
 
@@ -329,6 +366,7 @@ export function usePetLoader(options?: {
   }
 
   async function loadSwfClipDir(files: FileList | File[]) {
+    const controller = beginLoad();
     loading.value = true;
     error.value = null;
     lastSwfBuffer = null;
@@ -344,20 +382,28 @@ export function usePetLoader(options?: {
       }
       const meta = JSON.parse(await metaFile.text()) as SwfClipJson;
       const data = await loadSwfClipPackage(meta, atlasFile);
+      if (controller.signal.aborted) {
+        disposePetClip({ type: "swf", clip: data });
+        controller.signal.throwIfAborted();
+      }
       pet.value = { type: "swf", clip: data };
       warnings.value = buildSwfWarnings(data.materialWarnings, data);
       parseMs.value = Math.round(performance.now() - t0);
     } catch (e) {
+      if (controller.signal.aborted) return;
       error.value = e instanceof Error ? e.message : String(e);
       pet.value = null;
     } finally {
-      loading.value = false;
-      loadingMessage.value = null;
-      clearDownloadProgress();
+      if (loadController === controller) {
+        loading.value = false;
+        loadingMessage.value = null;
+        clearDownloadProgress();
+      }
     }
   }
 
   async function loadSpineClipDir(files: FileList | File[]) {
+    const controller = beginLoad();
     loading.value = true;
     error.value = null;
     lastSwfBuffer = null;
@@ -395,13 +441,20 @@ export function usePetLoader(options?: {
       }
 
       const data = await loadSpineClipPackage(meta, skeletonBytes, textures);
+      if (controller.signal.aborted) {
+        disposePetClip({ type: "spine", clip: data });
+        controller.signal.throwIfAborted();
+      }
       pet.value = { type: "spine", clip: data };
       parseMs.value = Math.round(performance.now() - t0);
     } catch (e) {
+      if (controller.signal.aborted) return;
       error.value = e instanceof Error ? e.message : String(e);
       pet.value = null;
     } finally {
-      loading.value = false;
+      if (loadController === controller) {
+        loading.value = false;
+      }
     }
   }
 
@@ -432,8 +485,8 @@ export function usePetLoader(options?: {
     parseMs.value = 0;
     lastSwfBuffer = null;
     lastSwfFileName = "";
-    terminateParserWorker();
-    terminateSpineParserWorker();
+    loadController.abort();
+    loading.value = false;
   }
 
   return {

@@ -7,7 +7,7 @@ it.each([0.01, 0.02, 1])("restores source pixel dimensions after loading skeleto
   expect(sourceWidth * scale * computeSpineNativePixelsPerUnit(scale)).toBeCloseTo(sourceWidth);
 });
 
-vi.mock("@seer/spine-bundle", () => ({
+vi.mock("@seer-pet-anim/spine-bundle", () => ({
   SPINE_PREVIEW_FPS: 30,
   parseAtlasUsesPma: vi.fn(),
 }));

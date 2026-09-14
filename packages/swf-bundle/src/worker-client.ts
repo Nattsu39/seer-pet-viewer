@@ -1,3 +1,4 @@
+import "./buffer-setup.js";
 import type { SwfClipData, SwfMaterialState } from "./types.js";
 import { atlasPixelsToBitmap } from "./atlas.js";
 import { isSwfAtlasReleased } from "./clip-data.js";
@@ -40,6 +41,8 @@ interface PendingRequest<T> {
   resolve: (value: T) => void;
   reject: (reason: Error) => void;
   settled: boolean;
+  cleanup?: () => void;
+  discard?: (value: T) => void;
   finish: (response: WorkerSuccessMessage) => Promise<T>;
 }
 
@@ -90,6 +93,7 @@ function failWorker(state: WorkerState, reason: Error): void {
   retireWorker(state);
   for (const request of toReject) {
     request.settled = true;
+    request.cleanup?.();
     request.reject(reason);
   }
 }
@@ -142,8 +146,12 @@ function settleRequest<T>(
   outcome: "resolve" | "reject",
   value: T | Error,
 ): void {
-  if (request.settled) return;
+  if (request.settled) {
+    if (outcome === "resolve") request.discard?.(value as T);
+    return;
+  }
   request.settled = true;
+  request.cleanup?.();
   active.delete(request.id);
   pending.delete(request.id);
   if (outcome === "resolve") {
@@ -203,15 +211,27 @@ async function handleWorkerMessage(
   state: WorkerState,
   event: MessageEvent<WorkerResponse>,
 ): Promise<void> {
-  if (currentWorker !== state || state.terminated) return;
+  if (currentWorker !== state || state.terminated) {
+    if (event.data?.ok) event.data.atlasBitmap?.close();
+    return;
+  }
 
   const response = event.data;
-  if (!response || typeof response !== "object") {
+  if (
+    !response ||
+    typeof response !== "object" ||
+    !Number.isSafeInteger(response.id) ||
+    typeof response.ok !== "boolean"
+  ) {
     failWorker(state, new Error("解析 Worker 返回了无效消息"));
     return;
   }
   const request = pending.get(response.id);
-  if (!request || request.worker !== state) return;
+  if (!request || request.worker !== state) {
+    if (response.ok) response.atlasBitmap?.close();
+    settleWorkerIfIdle(state);
+    return;
+  }
   pending.delete(response.id);
   settleWorkerIfIdle(state);
 
@@ -224,6 +244,7 @@ async function handleWorkerMessage(
     const value = await request.finish(response);
     settleRequest(request, "resolve", value);
   } catch (error) {
+    response.atlasBitmap?.close();
     settleRequest(request, "reject", asError(error, "解析结果处理失败"));
   }
 }
@@ -238,9 +259,12 @@ function requestWorkerParse<T>(
   buffer: ArrayBuffer,
   payload: WorkerRequestPayload,
   finish: (response: WorkerSuccessMessage) => Promise<T>,
+  signal?: AbortSignal,
+  discard?: (value: T) => void,
 ): Promise<T> {
   const id = ++requestId;
   return new Promise((resolve, reject) => {
+    signal?.throwIfAborted();
     let copy: ArrayBuffer;
     let state: WorkerState;
     try {
@@ -258,7 +282,16 @@ function requestWorkerParse<T>(
       reject,
       settled: false,
       finish,
+      discard,
     };
+    const abort = () =>
+      settleRequest(
+        request,
+        "reject",
+        new DOMException("Parse aborted", "AbortError"),
+      );
+    request.cleanup = () => signal?.removeEventListener("abort", abort);
+    signal?.addEventListener("abort", abort, { once: true });
     active.set(id, request as PendingRequest<unknown>);
     pending.set(id, request as PendingRequest<unknown>);
     try {
@@ -273,6 +306,7 @@ export function parseBundleInWorker(
   buffer: ArrayBuffer,
   fileName: string,
   materials?: Record<string, SwfMaterialState>,
+  options: { signal?: AbortSignal } = {},
 ): Promise<SwfClipData> {
   return requestWorkerParse(
     buffer,
@@ -282,6 +316,8 @@ export function parseBundleInWorker(
       const atlas = await resolveAtlasBitmap(response);
       return toClipData(parsed, atlas);
     },
+    options.signal,
+    (clip) => clip.atlas.close(),
   );
 }
 
@@ -295,6 +331,7 @@ export function reparseSwfClipInWorker(
   fileName: string,
   materials: Record<string, SwfMaterialState> | undefined,
   atlas: ImageBitmap,
+  options: { signal?: AbortSignal } = {},
 ): Promise<SwfClipData> {
   const needAtlas = isSwfAtlasReleased(atlas);
   return requestWorkerParse(
@@ -305,14 +342,25 @@ export function reparseSwfClipInWorker(
       const clipAtlas = needAtlas ? await resolveAtlasBitmap(response) : atlas;
       return toClipData(parsed, clipAtlas);
     },
+    options.signal,
+    (clip) => {
+      if (needAtlas) clip.atlas.close();
+    },
   );
 }
 
 /** 仅在 Worker 内重解码图集位图（分块渲染释放原图集后的 remount 用） */
 export function extractAtlasBitmapInWorker(
   buffer: ArrayBuffer,
+  options: { signal?: AbortSignal } = {},
 ): Promise<ImageBitmap> {
-  return requestWorkerParse(buffer, { mode: "atlas" }, resolveAtlasBitmap);
+  return requestWorkerParse(
+    buffer,
+    { mode: "atlas" },
+    resolveAtlasBitmap,
+    options.signal,
+    (bitmap) => bitmap.close(),
+  );
 }
 
 export function terminateParserWorker(): void {
@@ -330,6 +378,7 @@ export function terminateParserWorker(): void {
   const reason = new Error("解析 Worker 已终止");
   for (const request of toReject) {
     request.settled = true;
+    request.cleanup?.();
     request.reject(reason);
   }
 }

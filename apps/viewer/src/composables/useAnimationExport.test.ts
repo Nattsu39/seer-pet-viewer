@@ -2,7 +2,8 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { useAnimationExport } from "./useAnimationExport";
 
 const mocks = vi.hoisted(() => ({ animation: vi.fn(), png: vi.fn(), download: vi.fn() }));
-vi.mock("@seer/anim-export", () => ({
+vi.mock("@seer-pet-anim/anim-export", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@seer-pet-anim/anim-export")>(),
   exportAnimation: mocks.animation,
   exportPngSequence: mocks.png,
   downloadBlob: mocks.download,
