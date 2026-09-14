@@ -1,15 +1,17 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseBundleCore } from "./parse.js";
 
 const bundlePath = resolve(import.meta.dirname, "../../../ppets_4911.bundle");
+// 夹具为本地游戏素材(不进 git);且该链路需要真实 ImageBitmap/canvas,
+// happy-dom 测试环境缺失 ImageData 时跳过,保证 CI 可跑
+const hasFixture = existsSync(bundlePath);
+const hasCanvasEnv = typeof ImageData !== "undefined";
 
-describe("ppets_4911 moves_38419", () => {
-  it(
-    "parses moves_38419 with valid mesh data",
-    async () => {
-      const buf = readFileSync(bundlePath);
+describe.skipIf(!hasFixture || !hasCanvasEnv)("ppets_4911 moves_38419", () => {
+  it("parses moves_38419 with valid mesh data", async () => {
+    const buf = readFileSync(bundlePath);
     const core = await parseBundleCore(buf, "ppets_4911");
     const seq = core.sequences.find((s) => s.name === "moves_38419");
     expect(seq, "moves_38419 sequence").toBeTruthy();
@@ -28,9 +30,10 @@ describe("ppets_4911 moves_38419", () => {
         expect(sm.indexCount % 6, `frame ${i} indexCount`).toBe(0);
         expect(sm.indexCount, `frame ${i} empty submesh`).toBeGreaterThan(0);
         const smVerts = (sm.indexCount / 6) * 4;
-        expect(sm.startVertex + smVerts, `frame ${i} vertex range`).toBeLessThanOrEqual(
-          vertCount,
-        );
+        expect(
+          sm.startVertex + smVerts,
+          `frame ${i} vertex range`,
+        ).toBeLessThanOrEqual(vertCount);
       }
     }
 
@@ -82,11 +85,10 @@ describe("ppets_4911 moves_38419", () => {
     }
     let emptyFrames = 0;
     for (const f of seq!.frames) {
-      if (f.mesh.positions.length < 2 || f.mesh.subMeshes.length === 0) emptyFrames++;
+      if (f.mesh.positions.length < 2 || f.mesh.subMeshes.length === 0)
+        emptyFrames++;
     }
     console.log(`moves_38419 emptyFrames=${emptyFrames}`);
     expect(matKinds.size).toBeGreaterThan(0);
-    },
-    30_000,
-  );
+  }, 30_000);
 });
