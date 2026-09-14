@@ -138,6 +138,31 @@ function collectExportsPaths(exportsMap) {
   return entries;
 }
 
+// sideEffects 只能是两种情况:
+//   - false:整个包可安全摇树;
+//   - 非空数组,且每项都是本包 dist 内的相对路径——用于 buffer-setup.js 这类
+//     写 globalThis 的模块:声明为 false 会让打包器直接抹掉 `import "./buffer-setup.js"`,
+//     只允许包内已发布的 dist 文件,既保证不会误标第三方依赖为副作用,
+//     也保证声明的副作用文件真的随包发布。
+function checkSideEffects(pkg, pkgDir, label) {
+  const value = pkg.sideEffects;
+  if (value === false) return;
+  if (!Array.isArray(value) || value.length === 0) {
+    check(false, `${label}: sideEffects 必须是 false 或非空的包内路径数组`);
+    return;
+  }
+  for (const entry of value) {
+    if (typeof entry !== "string" || !entry.startsWith("./dist/")) {
+      check(false, `${label}: sideEffects 只允许 "./dist/…" 路径,收到 ${JSON.stringify(entry)}`);
+      continue;
+    }
+    check(
+      existsSync(join(pkgDir, entry)),
+      `${label}: sideEffects 声明的 ${entry} 不存在`,
+    );
+  }
+}
+
 // ---- 1. 元数据 ----
 console.log("== 1/4 包元数据 ==");
 for (const name of PACKAGES) {
@@ -154,7 +179,7 @@ for (const name of PACKAGES) {
   check(pkg.repository?.directory === `packages/${name}`, `${label}: repository.directory 不正确`);
   check(Array.isArray(pkg.files) && pkg.files.includes("dist"), `${label}: files 未包含 dist`);
   check(pkg.engines?.node === ">=20", `${label}: engines.node 缺失`);
-  check(pkg.sideEffects === false, `${label}: sideEffects 未设为 false`);
+  checkSideEffects(pkg, pkgDir, label);
   check(pkg.publishConfig?.access === "public", `${label}: publishConfig.access 缺失`);
   check(existsSync(join(pkgDir, "README.md")), `${label}: README.md 缺失`);
   check(existsSync(join(pkgDir, "LICENSE")), `${label}: LICENSE 缺失`);
