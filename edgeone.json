@@ -1,6 +1,6 @@
 {
   "name": "seer-pet-viewer",
-  "nodeVersion": "22",
+  "nodeVersion": "24.18.0",
   "installCommand": "pnpm install",
   "buildCommand": "pnpm build:index && pnpm -r build",
   "outputDirectory": "apps/viewer/dist",
