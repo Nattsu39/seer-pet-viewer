@@ -140,10 +140,11 @@ function collectExportsPaths(exportsMap) {
 
 // sideEffects 只能是两种情况:
 //   - false:整个包可安全摇树;
-//   - 非空数组,且每项都是本包 dist 内的相对路径——用于 buffer-setup.js 这类
-//     写 globalThis 的模块:声明为 false 会让打包器直接抹掉 `import "./buffer-setup.js"`,
-//     只允许包内已发布的 dist 文件,既保证不会误标第三方依赖为副作用,
-//     也保证声明的副作用文件真的随包发布。
+//   - 非空数组,每项是本包 dist 内的相对路径,或与其成对的 "./src/….ts" 源文件
+//     (viewer 通过 Vite alias 直接消费 packages/*/src,生产构建需要对源文件
+//     同样保留副作用,如 buffer-setup.ts 写 globalThis.Buffer)。
+//     要求成对的理由:src 项不随包发布(files 只有 dist),发布消费者依赖的
+//     必须是对应的 ./dist/*.js;允许孤儿 src 副作用声明会让发布产物丢 polyfill。
 function checkSideEffects(pkg, pkgDir, label) {
   const value = pkg.sideEffects;
   if (value === false) return;
@@ -151,14 +152,34 @@ function checkSideEffects(pkg, pkgDir, label) {
     check(false, `${label}: sideEffects 必须是 false 或非空的包内路径数组`);
     return;
   }
+  const declared = new Set(value.filter((entry) => typeof entry === "string"));
   for (const entry of value) {
-    if (typeof entry !== "string" || !entry.startsWith("./dist/")) {
-      check(false, `${label}: sideEffects 只允许 "./dist/…" 路径,收到 ${JSON.stringify(entry)}`);
+    if (typeof entry !== "string") {
+      check(false, `${label}: sideEffects 项必须是字符串,收到 ${JSON.stringify(entry)}`);
+      continue;
+    }
+    if (entry.startsWith("./dist/")) {
+      check(
+        existsSync(join(pkgDir, entry)),
+        `${label}: sideEffects 声明的 ${entry} 不存在`,
+      );
+      continue;
+    }
+    if (entry.startsWith("./src/") && entry.endsWith(".ts")) {
+      const distPair = `./dist/${entry.slice("./src/".length, -".ts".length)}.js`;
+      check(
+        declared.has(distPair),
+        `${label}: src 副作用 ${entry} 未随包发布,必须与 ${distPair} 成对声明`,
+      );
+      check(
+        existsSync(join(pkgDir, entry)),
+        `${label}: sideEffects 声明的 ${entry} 不存在`,
+      );
       continue;
     }
     check(
-      existsSync(join(pkgDir, entry)),
-      `${label}: sideEffects 声明的 ${entry} 不存在`,
+      false,
+      `${label}: sideEffects 只允许 "./dist/…" 或成对的 "./src/….ts" 路径,收到 ${JSON.stringify(entry)}`,
     );
   }
 }
