@@ -27,7 +27,8 @@
     "node": ">=20"
   },
   "sideEffects": [
-    "./dist/buffer-setup.js"
+    "./dist/buffer-setup.js",
+    "./src/buffer-setup.ts"
   ],
   "publishConfig": {
     "access": "public"
