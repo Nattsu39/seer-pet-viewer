@@ -8,6 +8,7 @@
       "@seer-pet-anim/anim-export": ["../../packages/anim-export/src"],
       "@seer-pet-anim/anim-export/capture": ["../../packages/anim-export/src/capture.ts"],
       "@seer-pet-anim/swf-bundle": ["../../packages/swf-bundle/src"],
+      "@seer-pet-anim/swf-rebuild/browser": ["../../packages/swf-rebuild/src/browser.ts"],
       "@seer-pet-anim/swf-bundle/parse": ["../../packages/swf-bundle/src/parse.ts"],
       "@seer-pet-anim/swf-renderer": ["../../packages/swf-renderer/src"],
       "@seer-pet-anim/spine-bundle": ["../../packages/spine-bundle/src"],

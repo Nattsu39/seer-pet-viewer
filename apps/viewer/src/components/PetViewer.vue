@@ -9,6 +9,7 @@ import {
   nextTick,
 } from "vue";
 import ExportModal from "./ExportModal.vue";
+import SwfExportControls from "./SwfExportControls.vue";
 import { useHistoryOverlay } from "../composables/useHistoryOverlay";
 import { SwfPlayer } from "@seer-pet-anim/swf-renderer";
 import { ensureSwfClipAtlas } from "@seer-pet-anim/swf-bundle/parse";
@@ -599,6 +600,7 @@ defineExpose({ fitView });
                   v-model="canvasBackgroundColor"
                   type="color"
                   aria-label="选择画布背景色"
+                  :title="canvasBackgroundColor"
                 />
               </label>
               <code>{{ canvasBackgroundColor }}</code>
@@ -629,7 +631,7 @@ defineExpose({ fitView });
               <input v-model="viewportY" type="number" step="0.01" />
             </label>
             <label class="zoom-field">
-              <span>缩放倍率</span>
+              <span>缩放</span>
               <input
                 v-model="viewportZoom"
                 type="number"
@@ -640,6 +642,12 @@ defineExpose({ fitView });
             </label>
             <button type="submit" class="compact-btn">设置</button>
           </form>
+
+          <SwfExportControls
+            :pet="pet"
+            :disabled="exporting"
+            :compact="toolbarPosition === 'bottom' && !isMobile"
+          />
 
           <button
             v-if="isMobile"
@@ -655,11 +663,16 @@ defineExpose({ fitView });
             v-if="!isMobile"
             class="export-group control-group"
             aria-label="导出设置"
+            :title="`当前格式最长边上限 ${exportMaxSide}px，超限将自动裁剪。`"
           >
             <span class="group-title">导出</span>
             <label class="export-field">
               <span>格式</span>
-              <select v-model="exportFormat" :disabled="exporting">
+              <select
+                v-model="exportFormat"
+                :disabled="exporting"
+                aria-label="图像格式"
+              >
                 <option value="webp">WebP</option>
                 <option value="gif">GIF</option>
                 <option value="png-sequence">PNG（序列帧）</option>
@@ -667,7 +680,11 @@ defineExpose({ fitView });
             </label>
             <label class="export-field">
               <span>缩放</span>
-              <select v-model.number="exportScale" :disabled="exporting">
+              <select
+                v-model.number="exportScale"
+                :disabled="exporting"
+                aria-label="图像缩放倍率"
+              >
                 <option :value="0.25">0.25×</option>
                 <option :value="0.5">0.5×</option>
                 <option :value="1">1×</option>
@@ -683,9 +700,6 @@ defineExpose({ fitView });
               />
               <span>背景色</span>
             </label>
-            <small
-              >当前格式最长边上限 {{ exportMaxSide }}px，超限将自动裁剪。</small
-            >
             <button
               class="export-btn primary"
               :disabled="exporting"
@@ -693,6 +707,9 @@ defineExpose({ fitView });
             >
               {{ exporting ? exportProgressLabel || "导出中…" : "导出动画" }}
             </button>
+            <small
+              >当前格式最长边上限 {{ exportMaxSide }}px，超限将自动裁剪。</small
+            >
           </section>
         </div>
         <p v-if="exportNotice && !isMobile" class="export-notice" role="status">
@@ -849,19 +866,64 @@ defineExpose({ fitView });
   padding: 0 2px;
 }
 
-.viewer.bottom:not(.mobile) .controls-tertiary .viewport-control {
-  flex: 1 1 430px;
+.viewer.bottom:not(.mobile) .controls-tertiary {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr) minmax(0, 1.4fr)
+    minmax(0, 1fr) minmax(0, 1.65fr);
 }
 
-.viewer.bottom:not(.mobile) .controls-tertiary .export-group {
-  flex: 0 1 auto;
-  margin-left: auto;
+.viewer.bottom:not(.mobile) .controls-tertiary .control-group {
+  min-width: 0;
+  min-height: 48px;
+  padding: 6px 8px;
+  gap: 6px;
+  align-items: center;
 }
 
-@media (min-width: 769px) and (max-width: 1180px) {
-  .viewer.bottom:not(.mobile) .controls-tertiary .export-group {
-    flex: 1 1 100%;
-    margin-left: 0;
+.viewer.bottom:not(.mobile) .background-control code,
+.viewer.bottom:not(.mobile) .background-control label > span,
+.viewer.bottom:not(.mobile) .export-field > span,
+.viewer.bottom:not(.mobile) .export-group small {
+  display: none;
+}
+
+.viewer.bottom:not(.mobile) .export-group {
+  flex-wrap: nowrap;
+}
+
+.viewer.bottom:not(.mobile) .export-field:first-of-type {
+  flex: 0 1 110px;
+  min-width: 72px;
+}
+
+.viewer.bottom:not(.mobile) .export-field select {
+  min-width: 0;
+  width: 64px;
+}
+
+.viewer.bottom:not(.mobile) .export-field:first-of-type select {
+  width: 100%;
+}
+
+.viewer.bottom:not(.mobile) .export-btn {
+  padding-inline: 8px;
+}
+
+.viewer.bottom:not(.mobile) .viewport-control label {
+  min-width: 0;
+  flex: 1;
+}
+
+.viewer.bottom:not(.mobile) .viewport-control input[type="number"] {
+  width: 60px;
+  min-width: 0;
+  flex: 1;
+}
+
+@media (min-width: 769px) and (max-width: 1279px) {
+  .viewer.bottom:not(.mobile) .controls-tertiary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -1096,6 +1158,12 @@ defineExpose({ fitView });
 
 .export-field select {
   min-width: 72px;
+}
+
+.export-group small {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 0.8rem;
 }
 
 .viewer.side .export-field select {
