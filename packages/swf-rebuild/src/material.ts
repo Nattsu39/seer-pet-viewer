@@ -14,7 +14,7 @@ export function resolveMaterial(material: Material): MaterialState {
   if (name === "SwfIncrMaskShader") return { kind: "increment" };
   if (name === "SwfDecrMaskShader") return { kind: "decrement" };
   const match =
-    /^(SwfSimpleShader|SwfSimpleGrabShader|SwfMaskedShader|SwfMaskedGrabShader)_(Normal|Add|Screen|Subtract|Overlay|Hardlight)(?:_(\d+))?$/.exec(
+    /^(SwfSimpleShader|SwfSimpleGrabShader|SwfMaskedShader|SwfMaskedGrabShader)_(Normal|Add|Screen|Lighten|Subtract|Overlay|Hardlight)(?:_(\d+))?$/.exec(
       name,
     );
   if (!match) return fail();
@@ -35,6 +35,7 @@ export function resolveMaterial(material: Material): MaterialState {
     Normal: { blend: 1, src: 1, dst: 10, op: 0, grab: false },
     Add: { blend: 8, src: 1, dst: 1, op: 0, grab: false },
     Screen: { blend: 4, src: 4, dst: 1, op: 0, grab: false },
+    Lighten: { blend: 5, src: 1, dst: 10, op: 4, grab: false },
     Subtract: { blend: 9, src: 1, dst: 1, op: 2, grab: false },
     Overlay: { blend: 13, src: 1, dst: 10, op: 0, grab: true },
     Hardlight: { blend: 14, src: 1, dst: 10, op: 0, grab: true },
