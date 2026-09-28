@@ -38,6 +38,11 @@ jobs:
       - name: Build packages
         run: pnpm build:packages
 
+      - name: Check swf-rebuild package contents
+        run: |
+          test -f packages/swf-rebuild/dist/cli.js
+          pnpm --filter @seer-pet-anim/swf-rebuild exec npm pack --dry-run
+
       - name: Typecheck packages
         run: pnpm --filter "./packages/*" typecheck
 

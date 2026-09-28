@@ -1,0 +1,53 @@
+{
+  "name": "@seer-pet-anim/swf-rebuild",
+  "version": "0.1.0",
+  "description": "Rebuild Flash pet timelines from Unity FlashTools animation bundles",
+  "type": "module",
+  "license": "MIT",
+  "author": "Nattsu39",
+  "homepage": "https://github.com/Nattsu39/seer-pet-viewer/tree/main/packages/swf-rebuild#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nattsu39/seer-pet-viewer.git",
+    "directory": "packages/swf-rebuild"
+  },
+  "bugs": "https://github.com/Nattsu39/seer-pet-viewer/issues",
+  "keywords": ["seer", "unity", "asset-bundle", "swf", "flash", "animation"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=23.5"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "import": "./dist/browser.js"
+    },
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "seer-swf-rebuild": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "node ../../tools/clean-package-dist.mjs && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@arkntools/unity-js": "^5.1.0",
+    "buffer": "^6.0.3",
+    "fflate": "^0.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

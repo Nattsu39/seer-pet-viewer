@@ -28,6 +28,10 @@ pnpm export examples/ppets_70
 
 生成 `.swfclip` 目录（`meta.json` + `atlas.png`），可在查看器中快速加载。
 
+## 实验性 Flash SWF 重建
+
+该项目提供了一个将 Bundle 重建为 Flash SWF 的工具，详见 [@seer-pet-anim/swf-rebuild](packages/swf-rebuild/README.md)
+
 ## 部署
 
 ```bash

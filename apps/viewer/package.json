@@ -16,6 +16,7 @@
     "@seer-pet-anim/spine-bundle": "workspace:*",
     "@seer-pet-anim/spine-renderer": "workspace:*",
     "@seer-pet-anim/swf-bundle": "workspace:*",
+    "@seer-pet-anim/swf-rebuild": "workspace:*",
     "@seer-pet-anim/swf-renderer": "workspace:*",
     "@tanstack/vue-virtual": "^3.13.31",
     "buffer": "^6.0.3",

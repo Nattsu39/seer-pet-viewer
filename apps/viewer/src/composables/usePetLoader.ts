@@ -50,7 +50,12 @@ function petLabel(entry: PetAnimIndexEntry): string {
 }
 
 export type PetClip =
-  | { type: "swf"; clip: SwfClipData; bundleBuffer?: ArrayBuffer | null }
+  | {
+      type: "swf";
+      clip: SwfClipData;
+      bundleBuffer?: ArrayBuffer | null;
+      sharedMaterialBuffer?: ArrayBuffer | null;
+    }
   | { type: "spine"; clip: SpineClipData };
 
 const SHARED_MATERIAL_BASE_NAME = SHARED_SWF_MATERIAL_BUNDLE_NAME.replace(
@@ -89,6 +94,7 @@ export function usePetLoader(options?: {
 
   let lastSwfBuffer: ArrayBuffer | null = null;
   let lastSwfFileName = "";
+  let sharedMaterialBuffer: ArrayBuffer | null = null;
   let sharedMaterialRemoteLoaded = false;
 
   function reportDownloadProgress(progress: DownloadProgress) {
@@ -162,7 +168,12 @@ export function usePetLoader(options?: {
         disposePetClip({ type: "swf", clip });
         signal.throwIfAborted();
       }
-      pet.value = { type: "swf", clip, bundleBuffer: lastSwfBuffer };
+      pet.value = {
+        type: "swf",
+        clip,
+        bundleBuffer: lastSwfBuffer,
+        sharedMaterialBuffer,
+      };
       warnings.value = buildSwfWarnings(clip.materialWarnings, clip);
     }
   }
@@ -218,6 +229,7 @@ export function usePetLoader(options?: {
       materialResolver,
     );
     controller.signal.throwIfAborted();
+    sharedMaterialBuffer = buffer;
     materialCount.value = materialResolver.size;
 
     if (pet.value?.type === "swf" && lastSwfBuffer) {
@@ -230,7 +242,12 @@ export function usePetLoader(options?: {
         pet.value.clip.atlas,
         { signal: controller.signal },
       );
-      pet.value = { type: "swf", clip, bundleBuffer: lastSwfBuffer };
+      pet.value = {
+        type: "swf",
+        clip,
+        bundleBuffer: lastSwfBuffer,
+        sharedMaterialBuffer,
+      };
       warnings.value = buildSwfWarnings(
         [
           `已导入 ${count} 个 SWF 共享材质，并已重新解析当前精灵`,
