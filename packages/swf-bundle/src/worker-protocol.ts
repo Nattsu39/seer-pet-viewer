@@ -137,17 +137,9 @@ function encodeFrame(
   floatOffset.value += mesh.positions.length;
   const uvs = copyFloatArray(floats, floatOffset.value, mesh.uvs);
   floatOffset.value += mesh.uvs.length;
-  const addColors = copyFloatArray(
-    floats,
-    floatOffset.value,
-    mesh.addColors,
-  );
+  const addColors = copyFloatArray(floats, floatOffset.value, mesh.addColors);
   floatOffset.value += mesh.addColors.length;
-  const mulColors = copyFloatArray(
-    floats,
-    floatOffset.value,
-    mesh.mulColors,
-  );
+  const mulColors = copyFloatArray(floats, floatOffset.value, mesh.mulColors);
   floatOffset.value += mesh.mulColors.length;
   const indices = copyUintArray(uints, uintOffset.value, mesh.indices);
   uintOffset.value += mesh.indices.length;
@@ -270,10 +262,7 @@ function assertRange(
   }
 }
 
-function assertByteRange(
-  range: PackedByteRange,
-  byteLength: number,
-): void {
+function assertByteRange(range: PackedByteRange, byteLength: number): void {
   if (
     !Number.isSafeInteger(range.byteOffset) ||
     !Number.isSafeInteger(range.byteLength) ||
@@ -293,11 +282,36 @@ function decodeFrame(
   labels: string[];
   mesh: SwfFrameMesh;
 } {
-  assertRange(descriptor.positions, Float32Array.BYTES_PER_ELEMENT, floats.byteLength, "positions");
-  assertRange(descriptor.uvs, Float32Array.BYTES_PER_ELEMENT, floats.byteLength, "uvs");
-  assertRange(descriptor.addColors, Float32Array.BYTES_PER_ELEMENT, floats.byteLength, "addColors");
-  assertRange(descriptor.mulColors, Float32Array.BYTES_PER_ELEMENT, floats.byteLength, "mulColors");
-  assertRange(descriptor.indices, Uint16Array.BYTES_PER_ELEMENT, uints.byteLength, "indices");
+  assertRange(
+    descriptor.positions,
+    Float32Array.BYTES_PER_ELEMENT,
+    floats.byteLength,
+    "positions",
+  );
+  assertRange(
+    descriptor.uvs,
+    Float32Array.BYTES_PER_ELEMENT,
+    floats.byteLength,
+    "uvs",
+  );
+  assertRange(
+    descriptor.addColors,
+    Float32Array.BYTES_PER_ELEMENT,
+    floats.byteLength,
+    "addColors",
+  );
+  assertRange(
+    descriptor.mulColors,
+    Float32Array.BYTES_PER_ELEMENT,
+    floats.byteLength,
+    "mulColors",
+  );
+  assertRange(
+    descriptor.indices,
+    Uint16Array.BYTES_PER_ELEMENT,
+    uints.byteLength,
+    "indices",
+  );
 
   return {
     labels: descriptor.labels,

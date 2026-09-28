@@ -94,6 +94,7 @@ pnpm sync:github-cdn -- --download  # 下载缺失文件到 staging/github-cdn/
 3. 重新构建并部署。
 
 GitHub Actions 工作流（[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)）会在每次部署前：
+
 - 从 `newseer.61.com` 拉取完整清单并生成 `pet-anim-index.json`
 - 将 `VITE_BUNDLE_PROXY_PREFIX` 注入 Vite 生产构建
 
@@ -117,11 +118,11 @@ pnpm build:index
 https://nattsu39.github.io/seer-pet-viewer/?pet=1234
 ```
 
-| 参数 | 说明 |
-|------|------|
-| `pet` | 精灵 ID（如 `1234`），或 bundle 名称（`ppets_1234`、`pskilltimeline_spines_4000`） |
-| `kind` | 可选，显式指定格式：`swf` 或 `spine` |
-| `variant` | 可选，设为 `small` 时打开小体型 SWF（`ppets_*_small`） |
+| 参数      | 说明                                                                               |
+| --------- | ---------------------------------------------------------------------------------- |
+| `pet`     | 精灵 ID（如 `1234`），或 bundle 名称（`ppets_1234`、`pskilltimeline_spines_4000`） |
+| `kind`    | 可选，显式指定格式：`swf` 或 `spine`                                               |
+| `variant` | 可选，设为 `small` 时打开小体型 SWF（`ppets_*_small`）                             |
 
 仅填写数字 ID 时，会同时匹配 SWF（`ppets_{id}`）与 Spine（`pskilltimeline_spines_{id}`）两种命名；若同一 ID 存在多种资源，默认优先 Spine，其次常规 SWF，最后小体型 SWF。
 
@@ -135,4 +136,5 @@ https://nattsu39.github.io/seer-pet-viewer/?pet=1234
 本地开发时同样可用，例如 `http://localhost:5173/?pet=1234`（需 Vite `/proxy` 可用）。
 
 ## ‌致谢
+
 [@聿聿](https://github.com/WhY15w)

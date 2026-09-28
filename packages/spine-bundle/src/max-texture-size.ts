@@ -66,15 +66,9 @@ function downscaleRgbaNearest(
 ): Uint8ClampedArray {
   const out = new Uint8ClampedArray(targetWidth * targetHeight * 4);
   for (let y = 0; y < targetHeight; y++) {
-    const srcY = Math.min(
-      height - 1,
-      Math.floor((y * height) / targetHeight),
-    );
+    const srcY = Math.min(height - 1, Math.floor((y * height) / targetHeight));
     for (let x = 0; x < targetWidth; x++) {
-      const srcX = Math.min(
-        width - 1,
-        Math.floor((x * width) / targetWidth),
-      );
+      const srcX = Math.min(width - 1, Math.floor((x * width) / targetWidth));
       const srcI = (srcY * width + srcX) * 4;
       const dstI = (y * targetWidth + x) * 4;
       out[dstI] = rgba[srcI]!;
@@ -97,17 +91,13 @@ async function resizeRgba(
     typeof createImageBitmap !== "function" ||
     typeof ImageData === "undefined"
   ) {
-    return downscaleRgbaNearest(
-      rgba,
-      width,
-      height,
-      targetWidth,
-      targetHeight,
-    );
+    return downscaleRgbaNearest(rgba, width, height, targetWidth, targetHeight);
   }
 
   const imageData = new ImageData(new Uint8ClampedArray(rgba), width, height);
-  const source = await createImageBitmap(imageData, { premultiplyAlpha: "none" });
+  const source = await createImageBitmap(imageData, {
+    premultiplyAlpha: "none",
+  });
   const resized = await createImageBitmap(source, {
     resizeWidth: targetWidth,
     resizeHeight: targetHeight,
@@ -122,13 +112,7 @@ async function resizeRgba(
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) {
     resized.close();
-    return downscaleRgbaNearest(
-      rgba,
-      width,
-      height,
-      targetWidth,
-      targetHeight,
-    );
+    return downscaleRgbaNearest(rgba, width, height, targetWidth, targetHeight);
   }
   ctx.drawImage(resized, 0, 0);
   resized.close();

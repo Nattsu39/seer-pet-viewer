@@ -88,7 +88,15 @@ describe("quad tile mapping", () => {
   it("assigns quad fully inside one tile by AABB", () => {
     const quad = boundsToQuadUvs(0.1, 0.8, 0.2, 0.9, 8192, 8192);
     const bounds = getQuadPixelBounds(quad.flat(), 0, 8192, 8192);
-    expect(assignQuadToTile(bounds.pxMin, bounds.pyMin, bounds.pxMax, bounds.pyMax, plan)).toBe(0);
+    expect(
+      assignQuadToTile(
+        bounds.pxMin,
+        bounds.pyMin,
+        bounds.pxMax,
+        bounds.pyMax,
+        plan,
+      ),
+    ).toBe(0);
   });
 
   it("counts zero cross-tile quads for a single-tile quad", () => {
@@ -169,7 +177,8 @@ describe("quad tile mapping", () => {
     const leftTu1 = (left.clipPxMax - bounds.pxMin) / pxSpan;
     const rightTu0 = (right.clipPxMin - bounds.pxMin) / pxSpan;
     const leftGeomTu1 =
-      (left.positions[2]! - left.positions[0]!) / (positions[2]! - positions[0]!);
+      (left.positions[2]! - left.positions[0]!) /
+      (positions[2]! - positions[0]!);
     const rightGeomTu0 =
       (right.positions[0]! - positions[0]!) / (positions[2]! - positions[0]!);
     expect(leftGeomTu1).toBeGreaterThan(leftTu1);

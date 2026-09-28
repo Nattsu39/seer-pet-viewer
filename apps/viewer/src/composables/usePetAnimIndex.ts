@@ -1,6 +1,9 @@
 import { onMounted, shallowRef } from "vue";
 import type { PetAnimIndex } from "../lib/pet-anim-index";
-import { loadPetAnimIndex, resetPetAnimIndexCache } from "../lib/pet-anim-index";
+import {
+  loadPetAnimIndex,
+  resetPetAnimIndexCache,
+} from "../lib/pet-anim-index";
 import { isRemoteBundleEnabled } from "../lib/remote-bundle";
 
 const index = shallowRef<PetAnimIndex | null>(null);

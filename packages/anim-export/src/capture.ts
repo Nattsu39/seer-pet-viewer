@@ -1,4 +1,11 @@
-export { MAX_FRAME_SIDE, MAX_ANIMATION_FRAME_SIDE, MAX_PNG_FRAME_SIDE, getExportMaxSide, cropCanvasSize, validateCanvasSize } from "./canvas-size.js";
+export {
+  MAX_FRAME_SIDE,
+  MAX_ANIMATION_FRAME_SIDE,
+  MAX_PNG_FRAME_SIDE,
+  getExportMaxSide,
+  cropCanvasSize,
+  validateCanvasSize,
+} from "./canvas-size.js";
 export { streamCapturedFrames } from "./frame-stream.js";
 export {
   computeTightExportSize,

@@ -1,8 +1,8 @@
 declare module "wasm-webp/dist/esm/webp-wasm.js" {
   type EmscriptenModule = Record<string, unknown>;
-  export default function createModule(
-    overrides?: { locateFile?: (path: string) => string },
-  ): Promise<EmscriptenModule>;
+  export default function createModule(overrides?: {
+    locateFile?: (path: string) => string;
+  }): Promise<EmscriptenModule>;
 }
 
 declare module "gifenc" {

@@ -40,7 +40,10 @@ export async function* streamCapturedFrames(
       maxX: Math.min(frame.width - 1, union.maxX + TIGHT_CROP_PADDING),
       maxY: Math.min(frame.height - 1, union.maxY + TIGHT_CROP_PADDING),
     };
-    return { index, ...cropRgbaPixels(frame.pixels, frame.width, frame.height, rect) };
+    return {
+      index,
+      ...cropRgbaPixels(frame.pixels, frame.width, frame.height, rect),
+    };
   };
   for (let i = 0; i < frameCount; i++) {
     yield captureFrame(i);

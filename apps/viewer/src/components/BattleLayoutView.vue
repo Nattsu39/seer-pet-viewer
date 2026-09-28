@@ -13,7 +13,10 @@ import { SpinePlayer } from "@seer-pet-anim/spine-renderer";
 import { ensureSwfClipAtlas } from "@seer-pet-anim/swf-bundle/parse";
 import { disposePetClip } from "../lib/dispose-pet-clip";
 import { shouldStartSceneDrag } from "../lib/scene-drag";
-import { playPreviewOnce, togglePreviewPlayback } from "../lib/preview-playback";
+import {
+  playPreviewOnce,
+  togglePreviewPlayback,
+} from "../lib/preview-playback";
 import { getEffectiveSwfMaxTextureSize } from "../lib/swf-texture";
 import { getAnimationLabel } from "../lib/animation-labels";
 import type { PetClip } from "../composables/usePetLoader";

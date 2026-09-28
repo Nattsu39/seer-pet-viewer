@@ -1,4 +1,9 @@
-export { SwfPlayer, type SwfPlayerOptions, type SwfCaptureOptions, type SwfCapturedFrame } from "./player.js";
+export {
+  SwfPlayer,
+  type SwfPlayerOptions,
+  type SwfCaptureOptions,
+  type SwfCapturedFrame,
+} from "./player.js";
 export * from "./blend.js";
 export * from "./shaders.js";
 export {
@@ -6,4 +11,9 @@ export {
   useHighPrecisionAtlasSampling,
 } from "./swf-shader.js";
 
-export type { AnimationSequence, AnimationMarker, PlaybackEvent, PlayResult } from "@seer-pet-anim/anim-export/playback";
+export type {
+  AnimationSequence,
+  AnimationMarker,
+  PlaybackEvent,
+  PlayResult,
+} from "@seer-pet-anim/anim-export/playback";

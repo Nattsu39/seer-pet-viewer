@@ -1,9 +1,9 @@
-import { Buffer } from 'buffer';
-import { u16 } from './binary.js';
+import { Buffer } from "buffer";
+import { u16 } from "./binary.js";
 
 /** 小型 ABC 表合成样例；不包含游戏代码或资源。 */
 export function stubFixture(): { abc: Buffer; operandOffsets: number[] } {
-  const strings = ['Example', 'addFrameScript', 'frame1', 'frame2', 'frame3'];
+  const strings = ["Example", "addFrameScript", "frame1", "frame2", "frame3"];
   const pool = [
     Buffer.from([0, 0, 0, strings.length + 1]),
     ...strings.map((value) =>

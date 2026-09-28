@@ -1,9 +1,5 @@
 import type { Material } from "@arkntools/unity-js";
-import type {
-  SwfBlendMode,
-  SwfMaterialState,
-  SwfShaderKind,
-} from "./types.js";
+import type { SwfBlendMode, SwfMaterialState, SwfShaderKind } from "./types.js";
 
 const GRAB_MODES: SwfBlendMode[] = [
   "darken",

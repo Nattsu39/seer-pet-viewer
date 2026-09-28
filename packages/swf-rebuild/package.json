@@ -12,7 +12,14 @@
     "directory": "packages/swf-rebuild"
   },
   "bugs": "https://github.com/Nattsu39/seer-pet-viewer/issues",
-  "keywords": ["seer", "unity", "asset-bundle", "swf", "flash", "animation"],
+  "keywords": [
+    "seer",
+    "unity",
+    "asset-bundle",
+    "swf",
+    "flash",
+    "animation"
+  ],
   "publishConfig": {
     "access": "public"
   },

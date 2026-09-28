@@ -46,7 +46,11 @@ function toggleMobileMenu(e: MouseEvent) {
 
 function onDocClick(e: MouseEvent) {
   const target = e.target as Node;
-  if (showInfoMenu.value && infoMenuRef.value && !infoMenuRef.value.contains(target)) {
+  if (
+    showInfoMenu.value &&
+    infoMenuRef.value &&
+    !infoMenuRef.value.contains(target)
+  ) {
     showInfoMenu.value = false;
   }
 }

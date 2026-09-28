@@ -30,49 +30,58 @@ describe("spine-bundle", () => {
     await expect(detectBundleKind(buffer)).resolves.toBe("spine");
   });
 
-  it.skipIf(!hasSpineBundle)("parses pskilltimeline_spines_4000 metadata", async () => {
-    const buffer = readFileSync(spineBundle);
-    const meta = await parseSpineBundleMetadata(
-      buffer,
-      "pskilltimeline_spines_4000",
-    );
-    expect(meta.petId).toBe(4000);
-    expect(meta.scale).toBeCloseTo(0.01, 5);
-    expect(meta.defaultMix).toBeCloseTo(0.2, 5);
-    expect(meta.animations.sort()).toEqual(
-      ["appear", "attack", "await", "cp", "hidemove", "hited", "sa"].sort(),
-    );
-    expect(meta.skeletonBytes.byteLength).toBeGreaterThan(1000);
-    expect(meta.atlasText).toContain("pma:true");
-    expect(meta.atlasText).toContain("4000_7.png");
-  });
+  it.skipIf(!hasSpineBundle)(
+    "parses pskilltimeline_spines_4000 metadata",
+    async () => {
+      const buffer = readFileSync(spineBundle);
+      const meta = await parseSpineBundleMetadata(
+        buffer,
+        "pskilltimeline_spines_4000",
+      );
+      expect(meta.petId).toBe(4000);
+      expect(meta.scale).toBeCloseTo(0.01, 5);
+      expect(meta.defaultMix).toBeCloseTo(0.2, 5);
+      expect(meta.animations.sort()).toEqual(
+        ["appear", "attack", "await", "cp", "hidemove", "hited", "sa"].sort(),
+      );
+      expect(meta.skeletonBytes.byteLength).toBeGreaterThan(1000);
+      expect(meta.atlasText).toContain("pma:true");
+      expect(meta.atlasText).toContain("4000_7.png");
+    },
+  );
 
-  it.skipIf(!hasSpineBundle)("reads skeleton version from binary header", async () => {
-    const buffer = readFileSync(spineBundle);
-    const meta = await parseSpineBundleMetadata(
-      buffer,
-      "pskilltimeline_spines_4000",
-    );
-    expect(readSpineVersion(meta.skeletonBytes)).toBe("4.0.64");
-    expect(meta.animations).toHaveLength(7);
-    expect(meta.animations).toContain("await");
-    expect(meta.animations).toContain("attack");
-  });
+  it.skipIf(!hasSpineBundle)(
+    "reads skeleton version from binary header",
+    async () => {
+      const buffer = readFileSync(spineBundle);
+      const meta = await parseSpineBundleMetadata(
+        buffer,
+        "pskilltimeline_spines_4000",
+      );
+      expect(readSpineVersion(meta.skeletonBytes)).toBe("4.0.64");
+      expect(meta.animations).toHaveLength(7);
+      expect(meta.animations).toContain("await");
+      expect(meta.animations).toContain("attack");
+    },
+  );
 
   it("extracts pet id from spine bundle names", () => {
     expect(extractSpinePetId("pskilltimeline_spines_4000")).toBe(4000);
     expect(extractSpinePetId("bundle", "4000_SkeletonData")).toBe(4000);
   });
 
-  it.skipIf(!hasSpineBundle)("parses full bundle when texture decode is available", async () => {
-    const buffer = readFileSync(spineBundle);
-    const core = await parseSpineBundleCore(
-      buffer,
-      "pskilltimeline_spines_4000",
-    );
-    expect(core.texturePixels).toHaveLength(7);
-    for (const tex of core.texturePixels) {
-      expect(tex.rgba.length).toBe(tex.width * tex.height * 4);
-    }
-  });
+  it.skipIf(!hasSpineBundle)(
+    "parses full bundle when texture decode is available",
+    async () => {
+      const buffer = readFileSync(spineBundle);
+      const core = await parseSpineBundleCore(
+        buffer,
+        "pskilltimeline_spines_4000",
+      );
+      expect(core.texturePixels).toHaveLength(7);
+      for (const tex of core.texturePixels) {
+        expect(tex.rgba.length).toBe(tex.width * tex.height * 4);
+      }
+    },
+  );
 });

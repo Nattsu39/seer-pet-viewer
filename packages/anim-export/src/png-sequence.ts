@@ -121,7 +121,10 @@ export async function exportPngSequence(
   let captured = 0;
 
   try {
-    for await (const frame of source.captureFrames({ ...options, maxSide: MAX_PNG_FRAME_SIDE })) {
+    for await (const frame of source.captureFrames({
+      ...options,
+      maxSide: MAX_PNG_FRAME_SIDE,
+    })) {
       if (captured === 0) {
         width = frame.width;
         height = frame.height;

@@ -34,7 +34,11 @@ export function quantize(
   maxColors: number,
   opts?: QuantizeOptions,
 ) {
-  return quantizeRaw(tightRgbaForGifenc(pixels, width, height), maxColors, opts);
+  return quantizeRaw(
+    tightRgbaForGifenc(pixels, width, height),
+    maxColors,
+    opts,
+  );
 }
 
 export function applyPalette(

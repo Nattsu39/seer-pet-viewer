@@ -37,11 +37,7 @@ const modalStyle = computed(
 
 <template>
   <Teleport to="body">
-    <div
-      v-if="open"
-      class="export-modal-backdrop"
-      @click="emit('close')"
-    >
+    <div v-if="open" class="export-modal-backdrop" @click="emit('close')">
       <div
         class="export-modal"
         role="dialog"
@@ -72,7 +68,8 @@ const modalStyle = computed(
               @change="
                 emit(
                   'update:exportFormat',
-                  ($event.target as HTMLSelectElement).value as ViewerExportFormat,
+                  ($event.target as HTMLSelectElement)
+                    .value as ViewerExportFormat,
                 )
               "
             >
@@ -116,8 +113,12 @@ const modalStyle = computed(
             />
             <span>导出当前背景色</span>
           </label>
-          <small>当前格式最长边上限 {{ exportMaxSide }}px，超限将自动裁剪。</small>
-          <p v-if="exportNotice" class="export-modal-notice" role="status">{{ exportNotice }}</p>
+          <small
+            >当前格式最长边上限 {{ exportMaxSide }}px，超限将自动裁剪。</small
+          >
+          <p v-if="exportNotice" class="export-modal-notice" role="status">
+            {{ exportNotice }}
+          </p>
           <p v-if="exportError" class="export-modal-error">{{ exportError }}</p>
         </div>
 
@@ -140,7 +141,11 @@ const modalStyle = computed(
 </template>
 
 <style scoped>
-.export-modal-notice { margin: 0; font-size: 0.85rem; line-height: 1.5; }
+.export-modal-notice {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
 .export-modal-backdrop {
   position: fixed;
   inset: 0;

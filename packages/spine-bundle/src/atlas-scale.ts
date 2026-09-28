@@ -33,7 +33,9 @@ function scalePageBlock(block: string, scale: number): string {
     .join(eol);
 }
 
-function splitAtlasPages(atlasText: string): Array<{ name: string; block: string }> {
+function splitAtlasPages(
+  atlasText: string,
+): Array<{ name: string; block: string }> {
   const eol = atlasText.includes("\r\n") ? "\r\n" : "\n";
   const lines = atlasText.split(/\r?\n/);
   const pages: Array<{ name: string; block: string }> = [];

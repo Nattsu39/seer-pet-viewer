@@ -99,10 +99,8 @@ export function computeVertexCanvasSize(
   scale: number,
   padding = EXPORT_PADDING,
 ): { width: number; height: number } {
-  const width =
-    Math.ceil((bounds.maxX - bounds.minX) * scale) + padding * 2;
-  const height =
-    Math.ceil((bounds.maxY - bounds.minY) * scale) + padding * 2;
+  const width = Math.ceil((bounds.maxX - bounds.minX) * scale) + padding * 2;
+  const height = Math.ceil((bounds.maxY - bounds.minY) * scale) + padding * 2;
   return {
     width: Math.max(width, 1),
     height: Math.max(height, 1),
@@ -144,7 +142,8 @@ export function planReferenceExport(
     throw new Error("导出倍率必须为有限正数");
   }
   // 先限制渲染视口，避免为超大动画创建完整画布后才裁剪。
-  const raw = viewport ?? computeVertexCanvasSize(bounds, effectiveScale, padding);
+  const raw =
+    viewport ?? computeVertexCanvasSize(bounds, effectiveScale, padding);
   const cropped = cropCanvasSize(raw, maxSide);
   return {
     ...cropped,
@@ -177,11 +176,7 @@ export function tightCropRgbaFrames(
   for (const frame of frames) {
     union = unionPixelRects(
       union,
-      findSignificantAlphaBounds(
-        frame.pixels,
-        frame.width,
-        frame.height,
-      ),
+      findSignificantAlphaBounds(frame.pixels, frame.width, frame.height),
     );
   }
   if (!union) return frames;

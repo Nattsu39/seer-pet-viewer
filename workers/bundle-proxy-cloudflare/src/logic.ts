@@ -11,7 +11,10 @@ export function extractHash(pathname: string): string | null {
   return HASH_RE.test(hash) ? hash : null;
 }
 
-export function corsHeaders(origin: string | null, allowedOrigin?: string): HeadersInit {
+export function corsHeaders(
+  origin: string | null,
+  allowedOrigin?: string,
+): HeadersInit {
   const allowOrigin =
     allowedOrigin ?? (origin && origin !== "null" ? origin : "*");
   return {
@@ -32,23 +35,25 @@ export async function proxyBundleRequest(
     method: "GET",
     headers: {
       referer: "https://newseer.61.com",
-      "user-agent": request.headers.get("user-agent") ?? "seer-pet-viewer-proxy",
+      "user-agent":
+        request.headers.get("user-agent") ?? "seer-pet-viewer-proxy",
     },
   });
 
   if (!upstreamRes.ok) {
     return new Response(`上游错误: ${upstreamRes.status}`, {
       status: upstreamRes.status,
-      headers: corsHeaders(request.headers.get("Origin"), options.allowedOrigin),
+      headers: corsHeaders(
+        request.headers.get("Origin"),
+        options.allowedOrigin,
+      ),
     });
   }
 
   const headers = new Headers(upstreamRes.headers);
   headers.set(
     "Access-Control-Allow-Origin",
-    options.allowedOrigin ??
-      request.headers.get("Origin") ??
-      "*",
+    options.allowedOrigin ?? request.headers.get("Origin") ?? "*",
   );
   headers.set("Access-Control-Expose-Headers", "Content-Type, Content-Length");
   headers.set("Cache-Control", "public, max-age=31536000, immutable");

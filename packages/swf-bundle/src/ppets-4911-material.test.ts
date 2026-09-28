@@ -5,7 +5,10 @@ import { parseBundleCore, loadMaterialBundle } from "./parse.js";
 import { MaterialResolver } from "./material.js";
 
 const bundlePath = resolve(import.meta.dirname, "../../../ppets_4911.bundle");
-const materialsPath = resolve(import.meta.dirname, "../../../shared-materials.bundle");
+const materialsPath = resolve(
+  import.meta.dirname,
+  "../../../shared-materials.bundle",
+);
 // 夹具为本地游戏素材(不进 git),缺失时跳过,保证 CI 可跑
 const hasFixture = existsSync(bundlePath) && existsSync(materialsPath);
 

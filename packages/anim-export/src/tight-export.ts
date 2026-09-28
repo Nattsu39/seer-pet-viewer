@@ -112,12 +112,11 @@ export function finalizeExportPixels(
   pad: number,
 ): Uint8Array {
   const scaledCrop = scalePixelRect(plan.cropRect, plan.pixelScale);
-  const { pixels: cropped, width: cropW, height: cropH } = cropRgbaPixels(
-    pixels,
-    renderWidth,
-    renderHeight,
-    scaledCrop,
-  );
+  const {
+    pixels: cropped,
+    width: cropW,
+    height: cropH,
+  } = cropRgbaPixels(pixels, renderWidth, renderHeight, scaledCrop);
 
   if (pad <= 0) {
     return cropped;

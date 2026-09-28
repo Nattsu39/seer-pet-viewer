@@ -12,10 +12,7 @@ describe("scaleSpineAtlasText", () => {
       "SG1",
       "bounds:812,112,31,31",
     ].join("\n");
-    const scaled = scaleSpineAtlasText(
-      atlasText,
-      new Map([["4000.png", 0.5]]),
-    );
+    const scaled = scaleSpineAtlasText(atlasText, new Map([["4000.png", 0.5]]));
     expect(scaled).toContain("size:1024,1024");
     expect(scaled).toContain("bounds:406,56,16,16");
     expect(scaled).toContain("scale:0.3");
@@ -23,10 +20,7 @@ describe("scaleSpineAtlasText", () => {
 
   it("leaves pages with scale 1 unchanged", () => {
     const atlasText = "page.png\nsize:512,512\nbounds:10,20,30,40\n";
-    const scaled = scaleSpineAtlasText(
-      atlasText,
-      new Map([["page.png", 1]]),
-    );
+    const scaled = scaleSpineAtlasText(atlasText, new Map([["page.png", 1]]));
     expect(scaled).toBe(atlasText);
   });
 
@@ -61,10 +55,7 @@ describe("scaleSpineAtlasText", () => {
       "bounds:10,20,30,40",
       "offsets:0,0,39,76",
     ].join("\n");
-    const scaled = scaleSpineAtlasText(
-      atlasText,
-      new Map([["page.png", 0.5]]),
-    );
+    const scaled = scaleSpineAtlasText(atlasText, new Map([["page.png", 0.5]]));
     expect(scaled).toContain("offsets:0,0,20,38");
   });
 });

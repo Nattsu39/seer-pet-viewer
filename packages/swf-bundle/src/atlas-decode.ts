@@ -123,9 +123,7 @@ export function captureAtlasTextureSource(
   };
 }
 
-function stripDecoderFor(
-  source: AtlasTextureSource,
-): BlockDecoder | undefined {
+function stripDecoderFor(source: AtlasTextureSource): BlockDecoder | undefined {
   if (source.alreadyDecoded || !source.raw) return undefined;
   const decoder = BLOCK_DECODERS.get(source.format);
   if (!decoder) return undefined;
@@ -150,16 +148,8 @@ function copyStripRows(
   rows: number,
 ): void {
   const rowPixels = width;
-  const out32 = new Uint32Array(
-    out.buffer,
-    out.byteOffset,
-    out.byteLength / 4,
-  );
-  const src32 = new Uint32Array(
-    src.buffer,
-    src.byteOffset,
-    src.byteLength / 4,
-  );
+  const out32 = new Uint32Array(out.buffer, out.byteOffset, out.byteLength / 4);
+  const src32 = new Uint32Array(src.buffer, src.byteOffset, src.byteLength / 4);
   for (let r = 0; r < rows; r++) {
     let s = r * rowPixels;
     let d = (height - 1 - (y0 + r)) * rowPixels;
@@ -189,12 +179,9 @@ export function decodeAtlasStrips(
   const rowBytes = width * 4;
   const out = new Uint8ClampedArray(rowBytes * height);
   const blocksPerRow = Math.ceil(width / decoder.blockWidth);
-  const blockRowsPerStrip = Math.ceil(
-    STRIP_TARGET_ROWS / decoder.blockHeight,
-  );
+  const blockRowsPerStrip = Math.ceil(STRIP_TARGET_ROWS / decoder.blockHeight);
   const stripRows = blockRowsPerStrip * decoder.blockHeight;
-  const stripBytes =
-    blocksPerRow * blockRowsPerStrip * decoder.bytesPerBlock;
+  const stripBytes = blocksPerRow * blockRowsPerStrip * decoder.bytesPerBlock;
 
   for (let y = 0; y < height; y += stripRows) {
     const rows = Math.min(stripRows, height - y);
@@ -205,7 +192,11 @@ export function decodeAtlasStrips(
       stripIndex * stripBytes +
         blocksPerRow * blockRows * decoder.bytesPerBlock,
     );
-    const decoded = decoder.decode(input, width, blockRows * decoder.blockHeight);
+    const decoded = decoder.decode(
+      input,
+      width,
+      blockRows * decoder.blockHeight,
+    );
     const decodedRows = Math.min(decoded.length / rowBytes, stripRows);
     if (decodedRows < rows) {
       throw new Error(

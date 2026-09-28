@@ -7,6 +7,9 @@ it("restores the importer pixel density, independent of atlas or sequence bounds
   expect(resolveSwfPixelsPerUnit()).toBe(100);
 });
 
-it.each([0, -1, Infinity, NaN])("rejects invalid native density %s", (value) => {
-  expect(() => resolveSwfPixelsPerUnit(value)).toThrow();
-});
+it.each([0, -1, Infinity, NaN])(
+  "rejects invalid native density %s",
+  (value) => {
+    expect(() => resolveSwfPixelsPerUnit(value)).toThrow();
+  },
+);

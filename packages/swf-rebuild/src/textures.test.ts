@@ -7,18 +7,24 @@ import { validateTextureScale } from "./textures.js";
 
 describe("reduced texture resolution", () => {
   it("averages premultiplied pixels without leaking transparent RGB or premultiplying twice", () => {
-    const tag = bitmap(1, 2, 2, Uint8Array.from([
-      255, 0, 0, 255, 0, 255, 0, 0,
-      200, 100, 50, 128, 0, 0, 255, 0,
-    ]), 0.5);
+    const tag = bitmap(
+      1,
+      2,
+      2,
+      Uint8Array.from([
+        255, 0, 0, 255, 0, 255, 0, 0, 200, 100, 50, 128, 0, 0, 255, 0,
+      ]),
+      0.5,
+    );
     expect(tag.data.readUInt16LE(3)).toBe(1);
     expect(tag.data.readUInt16LE(5)).toBe(1);
     expect([...inflateSync(tag.data.subarray(7))]).toEqual([96, 89, 13, 6]);
   });
 
   it("keeps partial blocks at odd edges and never produces zero-sized bitmaps", () => {
-    const pixels = Uint8Array.from([10, 20, 30, 40, 50, 60, 70, 80, 90]
-      .flatMap((red) => [red, 0, 0, 255]));
+    const pixels = Uint8Array.from(
+      [10, 20, 30, 40, 50, 60, 70, 80, 90].flatMap((red) => [red, 0, 0, 255]),
+    );
     const half = bitmap(1, 3, 3, pixels, 0.5);
     expect(half.data.readUInt16LE(3)).toBe(2);
     expect(half.data.readUInt16LE(5)).toBe(2);
@@ -44,9 +50,10 @@ describe("reduced texture resolution", () => {
     expect(bits.read(1)).toBe(1);
     const count = bits.read(5);
     expect(bits.read(count, true)).toBe(30 * 65536);
-    expect(bits.read(count, true)).toBe(Math.round(100 / 3 * 65536));
-    expect(half.subarray(offset + fill.length))
-      .toEqual(full.subarray(offset + matrix([20, 0, 0, 20, 0, 0]).length));
+    expect(bits.read(count, true)).toBe(Math.round((100 / 3) * 65536));
+    expect(half.subarray(offset + fill.length)).toEqual(
+      full.subarray(offset + matrix([20, 0, 0, 20, 0, 0]).length),
+    );
   });
 
   it("preserves logical regions and mask geometry, counting each bitmap only once", () => {
@@ -65,7 +72,9 @@ describe("reduced texture resolution", () => {
 
   it("rejects unsupported scales", () => {
     for (const scale of [0, -1, 2, 0.3, NaN, Infinity]) {
-      expect(() => validateTextureScale(scale)).toThrow("Texture scale must be");
+      expect(() => validateTextureScale(scale)).toThrow(
+        "Texture scale must be",
+      );
     }
   });
 });

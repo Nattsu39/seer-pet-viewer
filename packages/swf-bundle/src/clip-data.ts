@@ -1,9 +1,11 @@
-import type { SwfClipData, SwfClipJson, ParsedSwfBundle, SwfSequence } from "./types.js";
+import type {
+  SwfClipData,
+  SwfClipJson,
+  ParsedSwfBundle,
+  SwfSequence,
+} from "./types.js";
 import { resolveSwfPixelsPerUnit } from "./pixel-scale.js";
-import {
-  atlasTileWarning,
-  getMaxTextureSize,
-} from "./max-texture-size.js";
+import { atlasTileWarning, getMaxTextureSize } from "./max-texture-size.js";
 import { prepareAtlasBitmap } from "./atlas.js";
 
 export function extractPetId(fileName: string, fallbackName?: string): number {

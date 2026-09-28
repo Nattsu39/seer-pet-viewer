@@ -24,9 +24,7 @@ export function useHighPrecisionAtlasSampling(
   atlasWidth: number,
   atlasHeight: number,
 ): boolean {
-  return (
-    Math.max(atlasWidth, atlasHeight) <= SWF_HIGH_PRECISION_ATLAS_MAX_SIDE
-  );
+  return Math.max(atlasWidth, atlasHeight) <= SWF_HIGH_PRECISION_ATLAS_MAX_SIDE;
 }
 
 /**
@@ -289,39 +287,40 @@ function getGlProgram(
   const precision = highPrecision ? "highp" : "mediump";
 
   if (mask) {
-    cache.mask ??= compileSwfGlProgram(`swf-mask-shader-atlas${suffix}`, [
-      localUniformBitGl,
-      atlasBit,
-      swfMaskBitGl,
-      roundPixelsBitGl,
-    ], precision);
+    cache.mask ??= compileSwfGlProgram(
+      `swf-mask-shader-atlas${suffix}`,
+      [localUniformBitGl, atlasBit, swfMaskBitGl, roundPixelsBitGl],
+      precision,
+    );
     return cache.mask;
   }
   if (grab) {
-    cache.grab ??= compileSwfGlProgram(`swf-grab-shader-atlas${suffix}`, [
-      localUniformBitGl,
-      atlasBit,
-      swfColorBitGl,
-      swfGrabBitGl,
-      roundPixelsBitGl,
-    ], precision);
+    cache.grab ??= compileSwfGlProgram(
+      `swf-grab-shader-atlas${suffix}`,
+      [
+        localUniformBitGl,
+        atlasBit,
+        swfColorBitGl,
+        swfGrabBitGl,
+        roundPixelsBitGl,
+      ],
+      precision,
+    );
     return cache.grab;
   }
   if (pmaOutput) {
-    cache.pma ??= compileSwfGlProgram(`swf-shader-atlas-pma${suffix}`, [
-      localUniformBitGl,
-      atlasBit,
-      swfColorPmaBitGl,
-      roundPixelsBitGl,
-    ], precision);
+    cache.pma ??= compileSwfGlProgram(
+      `swf-shader-atlas-pma${suffix}`,
+      [localUniformBitGl, atlasBit, swfColorPmaBitGl, roundPixelsBitGl],
+      precision,
+    );
     return cache.pma;
   }
-  cache.normal ??= compileSwfGlProgram(`swf-shader-atlas${suffix}`, [
-    localUniformBitGl,
-    atlasBit,
-    swfColorBitGl,
-    roundPixelsBitGl,
-  ], precision);
+  cache.normal ??= compileSwfGlProgram(
+    `swf-shader-atlas${suffix}`,
+    [localUniformBitGl, atlasBit, swfColorBitGl, roundPixelsBitGl],
+    precision,
+  );
   return cache.normal;
 }
 
@@ -419,7 +418,9 @@ export function updateSwfShaderResources(
       uTextureMatrix: { value: Matrix; type: "mat3x3<f32>" };
       uAtlasSize: { value: Float32Array; type: "vec2<f32>" };
     }>;
-    textureUniforms.uniforms.uTextureMatrix.copyFrom(texture.textureMatrix.mapCoord);
+    textureUniforms.uniforms.uTextureMatrix.copyFrom(
+      texture.textureMatrix.mapCoord,
+    );
     textureUniforms.uniforms.uAtlasSize.set([atlasWidth, atlasHeight]);
     textureUniforms.update();
     shader.resources.uTexture = texture.source;

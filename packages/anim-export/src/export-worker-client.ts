@@ -58,7 +58,10 @@ export function createExportWorkerClient(): ExportWorkerClient | null {
   return {
     begin(config) {
       if (!worker) throw new Error("导出 worker 已终止");
-      worker.postMessage({ type: "begin", ...config } satisfies ExportWorkerBeginMessage);
+      worker.postMessage({
+        type: "begin",
+        ...config,
+      } satisfies ExportWorkerBeginMessage);
     },
     sendFrame(pixels) {
       if (!worker) throw new Error("导出 worker 已终止");

@@ -32,11 +32,15 @@ function variantLabel(entry: PetAnimIndexEntry) {
     class="pet-picker-item"
     :class="{ 'pet-picker-item--local-only': remoteBlocked }"
     :disabled="itemDisabled"
-    :title="remoteBlocked ? '图床暂无镜像，请通过顶部菜单导入本地 bundle' : undefined"
+    :title="
+      remoteBlocked ? '图床暂无镜像，请通过顶部菜单导入本地 bundle' : undefined
+    "
     @click="emit('select', entry)"
   >
     <span class="pet-picker-id">#{{ entry.id }}</span>
-    <span class="pet-picker-name">{{ entry.name }}{{ variantLabel(entry) }}</span>
+    <span class="pet-picker-name"
+      >{{ entry.name }}{{ variantLabel(entry) }}</span
+    >
     <span class="pet-picker-size">
       {{ formatFileSize(entry.fileSize) }}
       <span v-if="usesCdn" class="pet-picker-size-note">图床</span>

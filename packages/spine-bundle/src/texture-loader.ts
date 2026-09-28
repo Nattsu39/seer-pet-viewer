@@ -56,7 +56,10 @@ function getStreamData(texture: Texture2D): StreamData | undefined {
   };
 }
 
-function getTextureDimensions(texture: Texture2D): { width: number; height: number } {
+function getTextureDimensions(texture: Texture2D): {
+  width: number;
+  height: number;
+} {
   const tree = texture.getTypeTree() as TextureTypeTree;
   return {
     width: tree.m_Width ?? tree.width ?? texture.width,

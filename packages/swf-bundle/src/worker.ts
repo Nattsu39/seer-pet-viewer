@@ -43,9 +43,14 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     if (materials) resolver.restore(materials);
 
     if (mode === "atlas") {
-      const core = await parseBundleCore(buffer, fileName ?? "bundle", resolver, {
-        atlasOnly: true,
-      });
+      const core = await parseBundleCore(
+        buffer,
+        fileName ?? "bundle",
+        resolver,
+        {
+          atlasOnly: true,
+        },
+      );
       if (!core.atlasPixels) throw new Error("图集提取未返回像素");
       const atlasBitmap = await createAtlasBitmap(core.atlasPixels);
       if (atlasBitmap) {

@@ -94,20 +94,17 @@ export function insetQuadUvsSelective(
 
   const canInsetU = uMax - uMin > du * 2;
   const canInsetV = vMax - vMin > dv * 2;
-  const effUMin =
-    edges.insetUMin && canInsetU ? uMin + du : uMin;
-  const effUMax =
-    edges.insetUMax && canInsetU ? uMax - du : uMax;
-  const effVMin =
-    edges.insetVMin && canInsetV ? vMin + dv : vMin;
-  const effVMax =
-    edges.insetVMax && canInsetV ? vMax - dv : vMax;
+  const effUMin = edges.insetUMin && canInsetU ? uMin + du : uMin;
+  const effUMax = edges.insetUMax && canInsetU ? uMax - du : uMax;
+  const effVMin = edges.insetVMin && canInsetV ? vMin + dv : vMin;
+  const effVMax = edges.insetVMax && canInsetV ? vMax - dv : vMax;
 
   for (let q = 0; q < 4; q++) {
     const i = vertexOffset + q * 2;
     const u = uvs[i]!;
     const v = uvs[i + 1]!;
-    (uvs as number[])[i] = Math.abs(u - uMin) < Math.abs(u - uMax) ? effUMin : effUMax;
+    (uvs as number[])[i] =
+      Math.abs(u - uMin) < Math.abs(u - uMax) ? effUMin : effUMax;
     (uvs as number[])[i + 1] =
       Math.abs(v - vMin) < Math.abs(v - vMax) ? effVMin : effVMax;
   }

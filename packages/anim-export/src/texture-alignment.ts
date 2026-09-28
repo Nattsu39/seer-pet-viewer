@@ -7,11 +7,7 @@ export interface RgbaImage {
 }
 
 export type TextureAlignmentVerdict =
-  | "ok"
-  | "minor_diff"
-  | "shift_misalign"
-  | "texture_misalign"
-  | "insufficient";
+  "ok" | "minor_diff" | "shift_misalign" | "texture_misalign" | "insufficient";
 
 export interface TextureAlignmentOptions {
   /** 单通道最大差超过此值视为不匹配像素 */
@@ -86,7 +82,10 @@ function scoreShift(
       }
       const refIndex = (y * rw + x) * 4;
       const curIndex = (y2 * cw + x2) * 4;
-      if (rp[refIndex + 3]! <= alphaThreshold && cp[curIndex + 3]! <= alphaThreshold) {
+      if (
+        rp[refIndex + 3]! <= alphaThreshold &&
+        cp[curIndex + 3]! <= alphaThreshold
+      ) {
         continue;
       }
       compared++;
@@ -116,9 +115,7 @@ function classifyVerdict(
   options: Required<
     Pick<
       TextureAlignmentOptions,
-      | "okMismatchRatio"
-      | "severeMismatchRatio"
-      | "shiftGainThreshold"
+      "okMismatchRatio" | "severeMismatchRatio" | "shiftGainThreshold"
     >
   >,
 ): TextureAlignmentVerdict {
@@ -143,7 +140,8 @@ export function detectTextureMisalignment(
 ): TextureAlignmentReport {
   const tolerance = options.tolerance ?? DEFAULT_TEXTURE_ALIGNMENT_TOLERANCE;
   const maxShift = options.maxShift ?? DEFAULT_TEXTURE_ALIGNMENT_MAX_SHIFT;
-  const okMismatchRatio = options.okMismatchRatio ?? DEFAULT_TEXTURE_MISMATCH_OK;
+  const okMismatchRatio =
+    options.okMismatchRatio ?? DEFAULT_TEXTURE_MISMATCH_OK;
   const severeMismatchRatio =
     options.severeMismatchRatio ?? DEFAULT_TEXTURE_MISMATCH_SEVERE;
   const shiftGainThreshold =
@@ -153,7 +151,8 @@ export function detectTextureMisalignment(
   const overlapWidth = Math.min(reference.width, candidate.width);
   const overlapHeight = Math.min(reference.height, candidate.height);
   const sizeMismatch =
-    reference.width !== candidate.width || reference.height !== candidate.height;
+    reference.width !== candidate.width ||
+    reference.height !== candidate.height;
 
   const base = scoreShift(
     reference,
@@ -192,11 +191,17 @@ export function detectTextureMisalignment(
   const shiftGain =
     base.mismatch > 0 ? (base.mismatch - best.mismatch) / base.mismatch : 0;
 
-  const verdict = classifyVerdict(base.compared, mismatchRatio, shiftGain, best, {
-    okMismatchRatio,
-    severeMismatchRatio,
-    shiftGainThreshold,
-  });
+  const verdict = classifyVerdict(
+    base.compared,
+    mismatchRatio,
+    shiftGain,
+    best,
+    {
+      okMismatchRatio,
+      severeMismatchRatio,
+      shiftGainThreshold,
+    },
+  );
 
   return {
     verdict,

@@ -40,7 +40,9 @@ const progressLabel = computed(() => {
   if (progress.total && progress.total > 0) {
     const total = formatFileSize(progress.total);
     const percent = progressPercent.value;
-    return percent !== null ? `${loaded} / ${total}（${percent}%）` : `${loaded} / ${total}`;
+    return percent !== null
+      ? `${loaded} / ${total}（${percent}%）`
+      : `${loaded} / ${total}`;
   }
   return `已下载 ${loaded}`;
 });
@@ -99,28 +101,34 @@ const officialSavedFilename = computed(() => {
     </div>
   </div>
 
-  <div
-    v-else-if="error"
-    class="remote-notice remote-notice-error"
-    role="alert"
-  >
+  <div v-else-if="error" class="remote-notice remote-notice-error" role="alert">
     <p class="remote-notice-title">加载失败</p>
     <p v-if="entry" class="remote-notice-target">
       精灵 #{{ entry.id }} · {{ entry.name }}
-      <span class="remote-notice-kind">{{ entry.kind === "swf" ? "SWF" : "Spine" }}</span>
+      <span class="remote-notice-kind">{{
+        entry.kind === "swf" ? "SWF" : "Spine"
+      }}</span>
     </p>
     <p class="remote-notice-message">{{ error }}</p>
     <p v-if="githubDownloadUrl" class="remote-notice-hint">
       该文件超过 CDN 单文件大小限制，可从
-      <a :href="githubDownloadUrl" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a :href="githubDownloadUrl" target="_blank" rel="noopener noreferrer"
+        >GitHub</a
+      >
       下载 bundle 后手动导入。
     </p>
     <p v-else-if="canRetry" class="remote-notice-hint">
-      可点击重试，或通过顶部菜单导入本地 bundle、<code>.swfclip</code> / <code>.spineclip</code> 目录。
+      可点击重试，或通过顶部菜单导入本地 bundle、<code>.swfclip</code> /
+      <code>.spineclip</code> 目录。
     </p>
-    <p v-else-if="officialDownloadUrl && !showOfficialFilenameTip" class="remote-notice-hint">
+    <p
+      v-else-if="officialDownloadUrl && !showOfficialFilenameTip"
+      class="remote-notice-hint"
+    >
       可从
-      <a :href="officialDownloadUrl" target="_blank" rel="noopener noreferrer">newseer.61.com 官方源</a>
+      <a :href="officialDownloadUrl" target="_blank" rel="noopener noreferrer"
+        >newseer.61.com 官方源</a
+      >
       下载 bundle 后手动导入。
     </p>
     <p v-else-if="!showOfficialFilenameTip" class="remote-notice-hint">
@@ -136,12 +144,15 @@ const officialSavedFilename = computed(() => {
       <p class="official-download-tip-title">官方源下载文件名提示</p>
       <p v-if="officialSavedFilename" class="official-download-tip-row">
         <span class="official-download-tip-label">下载后文件名</span>
-        <code class="official-download-tip-filename">{{ officialSavedFilename }}</code>
+        <code class="official-download-tip-filename">{{
+          officialSavedFilename
+        }}</code>
       </p>
       <p class="official-download-tip-desc">
         请在浏览器的「下载」文件夹或文件管理器中查找
         <code v-if="officialSavedFilename">{{ officialSavedFilename }}</code>
-        <template v-else>上述 hash 文件</template>（无扩展名或显示为未知类型均属正常）。
+        <template v-else>上述 hash 文件</template
+        >（无扩展名或显示为未知类型均属正常）。
       </p>
     </div>
 

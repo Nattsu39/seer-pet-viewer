@@ -20,7 +20,8 @@ function showBootError(message: string) {
 try {
   createApp(App).mount("#app");
 } catch (error) {
-  const message = error instanceof Error ? error.stack ?? error.message : String(error);
+  const message =
+    error instanceof Error ? (error.stack ?? error.message) : String(error);
   console.error(error);
   showBootError(message);
 }
@@ -34,6 +35,6 @@ window.addEventListener("unhandledrejection", (event) => {
   if (document.getElementById("app")?.childElementCount) return;
   const reason = event.reason;
   const message =
-    reason instanceof Error ? reason.stack ?? reason.message : String(reason);
+    reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
   showBootError(message);
 });

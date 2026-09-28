@@ -2,10 +2,15 @@ import { expect, it, vi } from "vitest";
 import { SpinePlayer } from "./player.js";
 import { computeSpineNativePixelsPerUnit } from "./export-dimensions.js";
 
-it.each([0.01, 0.02, 1])("restores source pixel dimensions after loading skeleton scale %s", (scale) => {
-  const sourceWidth = 320;
-  expect(sourceWidth * scale * computeSpineNativePixelsPerUnit(scale)).toBeCloseTo(sourceWidth);
-});
+it.each([0.01, 0.02, 1])(
+  "restores source pixel dimensions after loading skeleton scale %s",
+  (scale) => {
+    const sourceWidth = 320;
+    expect(
+      sourceWidth * scale * computeSpineNativePixelsPerUnit(scale),
+    ).toBeCloseTo(sourceWidth);
+  },
+);
 
 vi.mock("@seer-pet-anim/spine-bundle", () => ({
   SPINE_PREVIEW_FPS: 30,

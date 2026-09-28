@@ -99,9 +99,7 @@ describe("SWF parser worker protocol", () => {
       bitmap,
     ]);
     // 图集 RGBA 不再随消息离开 Worker，因此 descriptor 不带 atlas 范围
-    expect(
-      (response.descriptor as { atlas?: unknown }).atlas,
-    ).toBeUndefined();
+    expect((response.descriptor as { atlas?: unknown }).atlas).toBeUndefined();
   });
 
   it("falls back to transferring the atlas buffer without createImageBitmap", async () => {

@@ -37,7 +37,8 @@ function shiftImage(source: RgbaImage, dx: number, dy: number): RgbaImage {
     for (let x = 0; x < source.width; x++) {
       const tx = x + dx;
       const ty = y + dy;
-      if (tx < 0 || ty < 0 || tx >= source.width || ty >= source.height) continue;
+      if (tx < 0 || ty < 0 || tx >= source.width || ty >= source.height)
+        continue;
       const src = (y * source.width + x) * 4;
       const dst = (ty * source.width + tx) * 4;
       out.pixels[dst] = source.pixels[src]!;

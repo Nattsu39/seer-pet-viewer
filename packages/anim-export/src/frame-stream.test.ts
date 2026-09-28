@@ -2,16 +2,23 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { streamCapturedFrames } from "./frame-stream.js";
 import { tightCropRgbaFrames } from "./export-dimensions.js";
 
-beforeEach(() => vi.stubGlobal("requestAnimationFrame", (fn: FrameRequestCallback) => { queueMicrotask(() => fn(0)); return 1; }));
+beforeEach(() =>
+  vi.stubGlobal("requestAnimationFrame", (fn: FrameRequestCallback) => {
+    queueMicrotask(() => fn(0));
+    return 1;
+  }),
+);
 afterEach(() => vi.unstubAllGlobals());
 
 function render(index: number) {
-  const width = 40, height = 30;
+  const width = 40,
+    height = 30;
   const pixels = new Uint8Array(width * height * 4);
   // Moving content: every output must use the union, not a per-frame crop.
-  for (let y = 6; y < 12; y++) for (let x = 8 + index; x < 14 + index; x++) {
-    pixels.set([70 + index, 20, 60, 255], (y * width + x) * 4);
-  }
+  for (let y = 6; y < 12; y++)
+    for (let x = 8 + index; x < 14 + index; x++) {
+      pixels.set([70 + index, 20, 60, 255], (y * width + x) * 4);
+    }
   return { pixels, width, height };
 }
 
@@ -42,6 +49,10 @@ it("preserves the old union crop geometry and pixels while rerendering on demand
 it("retains the full viewport for fully transparent frames", async () => {
   const frame = { pixels: new Uint8Array(16 * 16 * 4), width: 16, height: 16 };
   const result = [];
-  for await (const item of streamCapturedFrames(2, () => frame, true)) result.push(item);
-  expect(result).toEqual([{ index: 0, ...frame }, { index: 1, ...frame }]);
+  for await (const item of streamCapturedFrames(2, () => frame, true))
+    result.push(item);
+  expect(result).toEqual([
+    { index: 0, ...frame },
+    { index: 1, ...frame },
+  ]);
 });

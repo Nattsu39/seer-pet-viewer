@@ -59,8 +59,7 @@ function readStored(): ViewerSettings {
         parsed.themePreference === "system"
           ? parsed.themePreference
           : "system",
-      toolbarPosition:
-        parsed.toolbarPosition === "side" ? "side" : "bottom",
+      toolbarPosition: parsed.toolbarPosition === "side" ? "side" : "bottom",
       autoImportSharedMaterials: parsed.autoImportSharedMaterials !== false,
       canvasBackgroundColor: normalizeHexColor(parsed.canvasBackgroundColor),
     };

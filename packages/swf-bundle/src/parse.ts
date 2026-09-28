@@ -137,9 +137,14 @@ export async function parseBundleCore(
   }
 
   const { tree } = findSwfClipAsset(bundle);
-  const sprite = tree.Sprite?.m_FileID === 0
-    ? bundle.objects.find((obj) => obj.type === AssetType.Sprite && String(obj.pathId) === String(tree.Sprite.m_PathID)) as import("@arkntools/unity-js").Sprite | undefined
-    : undefined;
+  const sprite =
+    tree.Sprite?.m_FileID === 0
+      ? (bundle.objects.find(
+          (obj) =>
+            obj.type === AssetType.Sprite &&
+            String(obj.pathId) === String(tree.Sprite.m_PathID),
+        ) as import("@arkntools/unity-js").Sprite | undefined)
+      : undefined;
   const pixelsPerUnit = resolveSwfPixelsPerUnit(sprite?.pixelsToUnits);
   const sequences = buildSequences(tree, resolver);
 
@@ -214,9 +219,8 @@ export async function parseBundle(
 export async function extractAtlasBitmapFromBundle(
   data: ArrayBuffer | Uint8Array,
 ): Promise<ImageBitmap> {
-  const { extractAtlasBitmapInWorker, parserWorkerAvailable } = await import(
-    "./worker-client.js"
-  );
+  const { extractAtlasBitmapInWorker, parserWorkerAvailable } =
+    await import("./worker-client.js");
   const buffer = data instanceof ArrayBuffer ? data : data.slice().buffer;
   if (parserWorkerAvailable()) {
     return extractAtlasBitmapInWorker(buffer);

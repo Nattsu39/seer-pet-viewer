@@ -11,7 +11,10 @@ pnpm add @seer-pet-anim/battle-layout
 ## 用法
 
 ```ts
-import { computeBattlePetPlacement, fitBattleCanvas } from "@seer-pet-anim/battle-layout";
+import {
+  computeBattlePetPlacement,
+  fitBattleCanvas,
+} from "@seer-pet-anim/battle-layout";
 ```
 
 本包无运行时依赖,是 [@seer-pet-anim/anim-export](../anim-export) 的底层依赖。

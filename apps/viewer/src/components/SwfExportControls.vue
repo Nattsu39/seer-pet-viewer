@@ -4,7 +4,11 @@ import { downloadBlob } from "@seer-pet-anim/anim-export";
 import type { PetClip } from "../composables/usePetLoader";
 import { rebuildSwfInWorker } from "../lib/swf-rebuild";
 
-const props = defineProps<{ pet: PetClip; disabled?: boolean; compact?: boolean }>();
+const props = defineProps<{
+  pet: PetClip;
+  disabled?: boolean;
+  compact?: boolean;
+}>();
 const LARGE_BUNDLE_BYTES = 15 * 1024 * 1024;
 const scale = ref<number | string>(1);
 const exporting = ref(false);
@@ -28,7 +32,9 @@ const controlsDisabled = computed(
   () => props.disabled || exporting.value || !!unavailableReason.value,
 );
 const hint = computed(
-  () => unavailableReason.value || "支持 1、0.5、0.25；bundle 超过 15 MB 时默认 0.5",
+  () =>
+    unavailableReason.value ||
+    "支持 1、0.5、0.25；bundle 超过 15 MB 时默认 0.5",
 );
 const validScale = computed(
   () => scale.value === 1 || scale.value === 0.5 || scale.value === 0.25,

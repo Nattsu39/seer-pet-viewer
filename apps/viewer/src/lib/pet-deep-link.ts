@@ -92,7 +92,9 @@ export function buildPetDeepLinkUrl(
   const loc =
     options.location ??
     (typeof window !== "undefined" ? window.location : undefined);
-  const url = new URL(loc ? `${loc.origin}${loc.pathname}` : "https://localhost/");
+  const url = new URL(
+    loc ? `${loc.origin}${loc.pathname}` : "https://localhost/",
+  );
   url.searchParams.set("pet", String(petId));
   if (options.kind) url.searchParams.set("kind", options.kind);
   if (options.variant === "small") url.searchParams.set("variant", "small");

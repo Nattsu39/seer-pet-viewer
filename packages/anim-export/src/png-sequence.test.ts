@@ -83,8 +83,10 @@ describe("png-sequence filenames", () => {
     expect(buildPngSequenceEntryName(4911, "standby", 9999, 12000)).toBe(
       "4911_standby_10000.png",
     );
-    expect(buildPngSequenceEntryName(4911, "attack", 3, 12000) <
-      buildPngSequenceEntryName(4911, "attack", 10234, 12000)).toBe(true);
+    expect(
+      buildPngSequenceEntryName(4911, "attack", 3, 12000) <
+        buildPngSequenceEntryName(4911, "attack", 10234, 12000),
+    ).toBe(true);
   });
 });
 
@@ -127,17 +129,36 @@ describe("zipPngSequence", () => {
 describe("exportPngSequence streaming", () => {
   function mockCanvas(encode: () => Promise<Blob>) {
     const canvases: Array<{ width: number; height: number }> = [];
-    vi.stubGlobal("ImageData", class { constructor(..._args: unknown[]) {} });
-    vi.stubGlobal("OffscreenCanvas", class {
-      constructor(public width: number, public height: number) { canvases.push(this); }
-      getContext() { return { putImageData: vi.fn() }; }
-      convertToBlob = encode;
-    });
+    vi.stubGlobal(
+      "ImageData",
+      class {
+        constructor(..._args: unknown[]) {}
+      },
+    );
+    vi.stubGlobal(
+      "OffscreenCanvas",
+      class {
+        constructor(
+          public width: number,
+          public height: number,
+        ) {
+          canvases.push(this);
+        }
+        getContext() {
+          return { putImageData: vi.fn() };
+        }
+        convertToBlob = encode;
+      },
+    );
     return canvases;
   }
 
   it("encodes each frame before requesting the next and produces a valid store ZIP", async () => {
-    const encoded = [new Uint8Array([137, 80, 78, 71]), new TextEncoder().encode("123456789"), new Uint8Array([42])];
+    const encoded = [
+      new Uint8Array([137, 80, 78, 71]),
+      new TextEncoder().encode("123456789"),
+      new Uint8Array([42]),
+    ];
     const events: string[] = [];
     let index = 0;
     const canvases = mockCanvas(async () => {
@@ -154,11 +175,27 @@ describe("exportPngSequence streaming", () => {
         }
       },
     };
-    const blob = await exportPngSequence(source, { petId: 4911, sequence: "attack", scale: 1, background: "transparent" });
+    const blob = await exportPngSequence(source, {
+      petId: 4911,
+      sequence: "attack",
+      scale: 1,
+      background: "transparent",
+    });
     const zip = new Uint8Array(await blob.arrayBuffer());
     const entries = readCentralDirectory(zip);
-    const names = ["4911_attack_0001.png", "4911_attack_0002.png", "4911_attack_0003.png"];
-    expect(events).toEqual(["capture 0", "encode 0", "capture 1", "encode 1", "capture 2", "encode 2"]);
+    const names = [
+      "4911_attack_0001.png",
+      "4911_attack_0002.png",
+      "4911_attack_0003.png",
+    ];
+    expect(events).toEqual([
+      "capture 0",
+      "encode 0",
+      "capture 1",
+      "encode 1",
+      "capture 2",
+      "encode 2",
+    ]);
     expect(blob.type).toBe("application/zip");
     expect(entries.map((e) => e.name)).toEqual(names);
     for (const [i, entry] of entries.entries()) {
@@ -167,13 +204,17 @@ describe("exportPngSequence streaming", () => {
       expect(entry.uncompressedSize).toBe(encoded[i]!.length);
     }
     expect(entries[1]!.crc32).toBe(0xcbf43926);
-    expect(unzipSync(zip)).toEqual(Object.fromEntries(names.map((name, i) => [name, encoded[i]])));
+    expect(unzipSync(zip)).toEqual(
+      Object.fromEntries(names.map((name, i) => [name, encoded[i]])),
+    );
     expect(canvases).toHaveLength(1);
     expect(canvases[0]).toMatchObject({ width: 0, height: 0 });
   });
 
   it("closes capture and releases the encoding canvas on failure", async () => {
-    const canvases = mockCanvas(async () => { throw new Error("encoding failed"); });
+    const canvases = mockCanvas(async () => {
+      throw new Error("encoding failed");
+    });
     const closeCapture = vi.fn();
     const source: FrameCaptureSource = {
       getSequenceFrameCount: () => 2,
@@ -186,8 +227,14 @@ describe("exportPngSequence streaming", () => {
         }
       },
     };
-    await expect(exportPngSequence(source, { petId: 4911, sequence: "attack", scale: 1, background: "transparent" }))
-      .rejects.toThrow("已完成 0/2 帧）: encoding failed");
+    await expect(
+      exportPngSequence(source, {
+        petId: 4911,
+        sequence: "attack",
+        scale: 1,
+        background: "transparent",
+      }),
+    ).rejects.toThrow("已完成 0/2 帧）: encoding failed");
     expect(closeCapture).toHaveBeenCalledOnce();
     expect(canvases[0]).toMatchObject({ width: 0, height: 0 });
   });

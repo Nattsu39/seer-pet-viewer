@@ -1,7 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { planAtlasTileGrid, sliceQuadAcrossTiles, atlasBitmapPxToMeshUv, splitAtlasBitmap, insetTileSliceQuadUvs } from "./atlas-tile.js";
+import {
+  planAtlasTileGrid,
+  sliceQuadAcrossTiles,
+  atlasBitmapPxToMeshUv,
+  splitAtlasBitmap,
+  insetTileSliceQuadUvs,
+} from "./atlas-tile.js";
 import { atlasPixelsToBitmap } from "./atlas.js";
 import { parseBundleCore } from "./parse.js";
 
@@ -29,21 +35,36 @@ function sampleLikeShader(
   const ty = y - y0;
   const sample = (sx: number, sy: number) => {
     const i = (sy * w + sx) * 4;
-    return [
-      rgba[i]!,
-      rgba[i + 1]!,
-      rgba[i + 2]!,
-      rgba[i + 3]!,
-    ] as [number, number, number, number];
+    return [rgba[i]!, rgba[i + 1]!, rgba[i + 2]!, rgba[i + 3]!] as [
+      number,
+      number,
+      number,
+      number,
+    ];
   };
   const c00 = sample(x0, y0);
   const c10 = sample(x1, y0);
   const c01 = sample(x0, y1);
   const c11 = sample(x1, y1);
   const lerp = (a: number, b: number, t: number) => a * (1 - t) + b * t;
-  const c0 = c00.map((c, i) => lerp(c, c10[i]!, tx)) as [number, number, number, number];
-  const c1 = c01.map((c, i) => lerp(c, c11[i]!, tx)) as [number, number, number, number];
-  return c0.map((c, i) => lerp(c, c1[i]!, ty)) as [number, number, number, number];
+  const c0 = c00.map((c, i) => lerp(c, c10[i]!, tx)) as [
+    number,
+    number,
+    number,
+    number,
+  ];
+  const c1 = c01.map((c, i) => lerp(c, c11[i]!, tx)) as [
+    number,
+    number,
+    number,
+    number,
+  ];
+  return c0.map((c, i) => lerp(c, c1[i]!, ty)) as [
+    number,
+    number,
+    number,
+    number,
+  ];
 }
 
 function maxChannelDelta(a: number[], b: number[]): number {
@@ -83,128 +104,137 @@ function tileLocalUvToMeshUv(
   return atlasBitmapPxToMeshUv(px, row, logicalW, logicalH);
 }
 
-describe.skipIf(!hasFixture || !hasCanvasEnv)("ppets_4911 tile UV parity", () => {
-  it("matches interior samples on cross-tile quads", async () => {
-    const buf = readFileSync(bundlePath);
-    const core = await parseBundleCore(buf, "ppets_4911");
-    const plan = planAtlasTileGrid(core.atlasWidth, core.atlasHeight, 4096)!;
-    const rgba = core.atlasPixels.rgba;
-    const w = core.atlasWidth;
-    const h = core.atlasHeight;
-    const prepared = await atlasPixelsToBitmap(core.atlasPixels);
-    const tileBitmaps = await splitAtlasBitmap(prepared.bitmap, plan);
-    const tiles = await Promise.all(
-      plan.tiles.map(async (tile, i) => ({
-        tile,
-        rgba: await rgbaFromBitmap(tileBitmaps[i]!),
-      })),
-    );
+describe.skipIf(!hasFixture || !hasCanvasEnv)(
+  "ppets_4911 tile UV parity",
+  () => {
+    it("matches interior samples on cross-tile quads", async () => {
+      const buf = readFileSync(bundlePath);
+      const core = await parseBundleCore(buf, "ppets_4911");
+      const plan = planAtlasTileGrid(core.atlasWidth, core.atlasHeight, 4096)!;
+      const rgba = core.atlasPixels.rgba;
+      const w = core.atlasWidth;
+      const h = core.atlasHeight;
+      const prepared = await atlasPixelsToBitmap(core.atlasPixels);
+      const tileBitmaps = await splitAtlasBitmap(prepared.bitmap, plan);
+      const tiles = await Promise.all(
+        plan.tiles.map(async (tile, i) => ({
+          tile,
+          rgba: await rgbaFromBitmap(tileBitmaps[i]!),
+        })),
+      );
 
-    const frame = core.sequences.find((s) => s.name === "attack")!.frames[0]!;
-    let compared = 0;
-    let mismatches = 0;
-    let maxDelta = 0;
+      const frame = core.sequences.find((s) => s.name === "attack")!.frames[0]!;
+      let compared = 0;
+      let mismatches = 0;
+      let maxDelta = 0;
 
-    function compareSample(
-      fullU: number,
-      fullV: number,
-      tileRgba: Uint8ClampedArray,
-      tile: { width: number; height: number; x: number; y: number },
-      localU: number,
-      localV: number,
-    ) {
-      const full = sampleLikeShader(rgba, w, h, fullU, fullV);
-      const tiled = sampleLikeShader(tileRgba, tile.width, tile.height, localU, localV);
-      const delta = maxChannelDelta(full, tiled);
-      compared++;
-      if (delta > 1) mismatches++;
-      maxDelta = Math.max(maxDelta, delta);
-    }
-
-    for (const subMesh of frame.mesh.subMeshes) {
-      const start = subMesh.startVertex;
-      const vertCount = (subMesh.indexCount / 6) * 4;
-      const positions: number[] = [];
-      const uvs: number[] = [];
-      const mulColors: number[] = [];
-      const addColors: number[] = [];
-      for (let vi = start; vi < start + vertCount; vi++) {
-        positions.push(
-          frame.mesh.positions[vi * 2]!,
-          frame.mesh.positions[vi * 2 + 1]!,
+      function compareSample(
+        fullU: number,
+        fullV: number,
+        tileRgba: Uint8ClampedArray,
+        tile: { width: number; height: number; x: number; y: number },
+        localU: number,
+        localV: number,
+      ) {
+        const full = sampleLikeShader(rgba, w, h, fullU, fullV);
+        const tiled = sampleLikeShader(
+          tileRgba,
+          tile.width,
+          tile.height,
+          localU,
+          localV,
         );
-        uvs.push(frame.mesh.uvs[vi * 2]!, frame.mesh.uvs[vi * 2 + 1]!);
-        mulColors.push(
-          frame.mesh.mulColors[vi * 4]!,
-          frame.mesh.mulColors[vi * 4 + 1]!,
-          frame.mesh.mulColors[vi * 4 + 2]!,
-          frame.mesh.mulColors[vi * 4 + 3]!,
-        );
-        addColors.push(
-          frame.mesh.addColors[vi * 4]!,
-          frame.mesh.addColors[vi * 4 + 1]!,
-          frame.mesh.addColors[vi * 4 + 2]!,
-          frame.mesh.addColors[vi * 4 + 3]!,
-        );
+        const delta = maxChannelDelta(full, tiled);
+        compared++;
+        if (delta > 1) mismatches++;
+        maxDelta = Math.max(maxDelta, delta);
       }
 
-      const quadCount = vertCount / 4;
+      for (const subMesh of frame.mesh.subMeshes) {
+        const start = subMesh.startVertex;
+        const vertCount = (subMesh.indexCount / 6) * 4;
+        const positions: number[] = [];
+        const uvs: number[] = [];
+        const mulColors: number[] = [];
+        const addColors: number[] = [];
+        for (let vi = start; vi < start + vertCount; vi++) {
+          positions.push(
+            frame.mesh.positions[vi * 2]!,
+            frame.mesh.positions[vi * 2 + 1]!,
+          );
+          uvs.push(frame.mesh.uvs[vi * 2]!, frame.mesh.uvs[vi * 2 + 1]!);
+          mulColors.push(
+            frame.mesh.mulColors[vi * 4]!,
+            frame.mesh.mulColors[vi * 4 + 1]!,
+            frame.mesh.mulColors[vi * 4 + 2]!,
+            frame.mesh.mulColors[vi * 4 + 3]!,
+          );
+          addColors.push(
+            frame.mesh.addColors[vi * 4]!,
+            frame.mesh.addColors[vi * 4 + 1]!,
+            frame.mesh.addColors[vi * 4 + 2]!,
+            frame.mesh.addColors[vi * 4 + 3]!,
+          );
+        }
 
-      for (let q = 0; q < quadCount; q++) {
-        const slices = sliceQuadAcrossTiles(
-          positions,
-          uvs,
-          q * 8,
-          w,
-          h,
-          plan,
-          mulColors,
-          addColors,
-          q * 4,
-        );
-        for (const slice of slices) {
-          const tileEntry = tiles[slice.tileIndex]!;
-          const sliceUvs = [...slice.uvs];
-          insetTileSliceQuadUvs(
-            sliceUvs,
-            0,
-            tileEntry.tile,
+        const quadCount = vertCount / 4;
+
+        for (let q = 0; q < quadCount; q++) {
+          const slices = sliceQuadAcrossTiles(
+            positions,
+            uvs,
+            q * 8,
             w,
             h,
-            slice.clipPxMin,
-            slice.clipPxMax,
-            slice.clipPyMin,
-            slice.clipPyMax,
+            plan,
+            mulColors,
+            addColors,
+            q * 4,
           );
-          for (let corner = 0; corner < 4; corner++) {
-            const localU = sliceUvs[corner * 2]!;
-            const localV = sliceUvs[corner * 2 + 1]!;
-            const { u: fullU, v: fullV } = tileLocalUvToMeshUv(
-              localU,
-              localV,
+          for (const slice of slices) {
+            const tileEntry = tiles[slice.tileIndex]!;
+            const sliceUvs = [...slice.uvs];
+            insetTileSliceQuadUvs(
+              sliceUvs,
+              0,
               tileEntry.tile,
               w,
               h,
+              slice.clipPxMin,
+              slice.clipPxMax,
+              slice.clipPyMin,
+              slice.clipPyMax,
             );
-            const full = sampleLikeShader(rgba, w, h, fullU, fullV);
-            const tiled = sampleLikeShader(
-              tileEntry.rgba,
-              tileEntry.tile.width,
-              tileEntry.tile.height,
-              localU,
-              localV,
-            );
-            const delta = maxChannelDelta(full, tiled);
-            compared++;
-            if (delta > 1) mismatches++;
-            maxDelta = Math.max(maxDelta, delta);
+            for (let corner = 0; corner < 4; corner++) {
+              const localU = sliceUvs[corner * 2]!;
+              const localV = sliceUvs[corner * 2 + 1]!;
+              const { u: fullU, v: fullV } = tileLocalUvToMeshUv(
+                localU,
+                localV,
+                tileEntry.tile,
+                w,
+                h,
+              );
+              const full = sampleLikeShader(rgba, w, h, fullU, fullV);
+              const tiled = sampleLikeShader(
+                tileEntry.rgba,
+                tileEntry.tile.width,
+                tileEntry.tile.height,
+                localU,
+                localV,
+              );
+              const delta = maxChannelDelta(full, tiled);
+              compared++;
+              if (delta > 1) mismatches++;
+              maxDelta = Math.max(maxDelta, delta);
+            }
           }
         }
       }
-    }
 
-    expect(compared).toBeGreaterThan(0);
-    expect(mismatches).toBe(0);
-    expect(maxDelta).toBeLessThanOrEqual(1);
-  }, 120_000);
-});
+      expect(compared).toBeGreaterThan(0);
+      expect(mismatches).toBe(0);
+      expect(maxDelta).toBeLessThanOrEqual(1);
+    }, 120_000);
+  },
+);

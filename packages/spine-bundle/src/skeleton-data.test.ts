@@ -20,9 +20,15 @@ const spineBundle = resolve(
 // 夹具为本地游戏素材(不进 git),缺失时跳过,保证 CI 可跑
 const hasSpineBundle = existsSync(spineBundle);
 
-function bindAtlasTextures(atlas: TextureAtlas, core: Awaited<ReturnType<typeof parseSpineBundleCore>>) {
+function bindAtlasTextures(
+  atlas: TextureAtlas,
+  core: Awaited<ReturnType<typeof parseSpineBundleCore>>,
+) {
   const sizeByName = new Map(
-    core.texturePixels.map((tex) => [tex.name, { width: tex.width, height: tex.height }]),
+    core.texturePixels.map((tex) => [
+      tex.name,
+      { width: tex.width, height: tex.height },
+    ]),
   );
   for (const page of atlas.pages) {
     const size = sizeByName.get(page.name);
@@ -31,7 +37,9 @@ function bindAtlasTextures(atlas: TextureAtlas, core: Awaited<ReturnType<typeof 
     }
     page.width = size.width;
     page.height = size.height;
-    page.setTexture(new FakeTexture({ width: size.width, height: size.height }));
+    page.setTexture(
+      new FakeTexture({ width: size.width, height: size.height }),
+    );
   }
 }
 

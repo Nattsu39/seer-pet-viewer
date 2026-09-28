@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  shouldStartSceneDrag,
-  type SceneDragPointerEvent,
-} from "./scene-drag";
+import { shouldStartSceneDrag, type SceneDragPointerEvent } from "./scene-drag";
 
 function pointerEvent(
   overrides: Partial<SceneDragPointerEvent> = {},

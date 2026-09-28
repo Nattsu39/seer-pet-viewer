@@ -13,12 +13,7 @@ export type SwfBlendMode =
   | "hardlight";
 
 export type SwfShaderKind =
-  | "simple"
-  | "simpleGrab"
-  | "incrMask"
-  | "decrMask"
-  | "masked"
-  | "maskedGrab";
+  "simple" | "simpleGrab" | "incrMask" | "decrMask" | "masked" | "maskedGrab";
 
 export interface SwfMaterialState {
   blendMode: SwfBlendMode;

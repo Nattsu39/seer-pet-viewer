@@ -27,8 +27,8 @@ function makeBundle(): ParsedSwfBundle {
       width: 3,
       height: 2,
       rgba: new Uint8ClampedArray([
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
-        20, 21, 22, 23, 24,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+        21, 22, 23, 24,
       ]),
     },
     materialWarnings: ["warning"],
@@ -140,15 +140,19 @@ describe("SWF worker binary protocol", () => {
     const descriptor = encoded.descriptor as PackedSwfBundleDescriptor;
     const json = JSON.stringify(descriptor);
 
-    expect(json).not.toContain("positions\":[");
-    expect(json).not.toContain("indices\":[");
+    expect(json).not.toContain('positions":[');
+    expect(json).not.toContain('indices":[');
     expect(Object.keys(encoded)).toEqual([
       "descriptor",
       "floatBuffer",
       "uintBuffer",
       "atlasBuffer",
     ]);
-    expect([encoded.floatBuffer, encoded.uintBuffer, encoded.atlasBuffer]).toHaveLength(3);
+    expect([
+      encoded.floatBuffer,
+      encoded.uintBuffer,
+      encoded.atlasBuffer,
+    ]).toHaveLength(3);
   });
 
   it("keeps descriptor atlas byte offset and byte length explicit", () => {
@@ -176,11 +180,7 @@ describe("SWF worker binary protocol", () => {
   it("copies a sliced atlas view into an exact independent range", () => {
     const source = makeBundle();
     const backing = new Uint8Array([99, 98, 1, 2, 3, 4, 97]);
-    source.atlasPixels.rgba = new Uint8ClampedArray(
-      backing.buffer,
-      2,
-      4,
-    );
+    source.atlasPixels.rgba = new Uint8ClampedArray(backing.buffer, 2, 4);
 
     const encoded = encodeParsedSwfBundle(source);
     const decoded = decodeParsedSwfBundle(

@@ -23,65 +23,69 @@ describe("swf parse baseline", () => {
     existsSync(resolve(ROOT, target.bundle)),
   );
   for (const target of PARSE_TARGETS) {
-    it.skipIf(!hasFixtures)(`writes parse stats for ${target.id}`, async () => {
-      const bundlePath = resolve(ROOT, target.bundle);
-      const buf = readFileSync(bundlePath);
-      const core = await parseBundleCore(buf, target.id);
-      const maxTextureSize = getMaxTextureSize();
-      const needsTiling =
-        core.atlasWidth > maxTextureSize || core.atlasHeight > maxTextureSize;
+    it.skipIf(!hasFixtures)(
+      `writes parse stats for ${target.id}`,
+      async () => {
+        const bundlePath = resolve(ROOT, target.bundle);
+        const buf = readFileSync(bundlePath);
+        const core = await parseBundleCore(buf, target.id);
+        const maxTextureSize = getMaxTextureSize();
+        const needsTiling =
+          core.atlasWidth > maxTextureSize || core.atlasHeight > maxTextureSize;
 
-      const sequences = core.sequences.map((seq) => {
-        const shaderKinds = new Set<string>();
-        let grabSubMeshes = 0;
-        let maskSubMeshes = 0;
-        for (const frame of seq.frames) {
-          for (const sm of frame.mesh.subMeshes) {
-            shaderKinds.add(sm.material.shaderKind);
-            if (
-              sm.material.shaderKind === "simpleGrab" ||
-              sm.material.shaderKind === "maskedGrab"
-            ) {
-              grabSubMeshes++;
-            }
-            if (
-              sm.material.shaderKind === "incrMask" ||
-              sm.material.shaderKind === "decrMask" ||
-              sm.material.shaderKind === "masked" ||
-              sm.material.shaderKind === "maskedGrab"
-            ) {
-              maskSubMeshes++;
+        const sequences = core.sequences.map((seq) => {
+          const shaderKinds = new Set<string>();
+          let grabSubMeshes = 0;
+          let maskSubMeshes = 0;
+          for (const frame of seq.frames) {
+            for (const sm of frame.mesh.subMeshes) {
+              shaderKinds.add(sm.material.shaderKind);
+              if (
+                sm.material.shaderKind === "simpleGrab" ||
+                sm.material.shaderKind === "maskedGrab"
+              ) {
+                grabSubMeshes++;
+              }
+              if (
+                sm.material.shaderKind === "incrMask" ||
+                sm.material.shaderKind === "decrMask" ||
+                sm.material.shaderKind === "masked" ||
+                sm.material.shaderKind === "maskedGrab"
+              ) {
+                maskSubMeshes++;
+              }
             }
           }
-        }
-        return {
-          name: seq.name,
-          frameCount: seq.frames.length,
-          shaderKinds: [...shaderKinds].sort(),
-          grabSubMeshes,
-          maskSubMeshes,
+          return {
+            name: seq.name,
+            frameCount: seq.frames.length,
+            shaderKinds: [...shaderKinds].sort(),
+            grabSubMeshes,
+            maskSubMeshes,
+          };
+        });
+
+        const payload = {
+          version: 1,
+          targetId: target.id,
+          bundle: target.bundle,
+          atlasWidth: core.atlasWidth,
+          atlasHeight: core.atlasHeight,
+          frameRate: core.frameRate,
+          petId: core.petId,
+          materialWarnings: core.materialWarnings,
+          maxTextureSize,
+          needsTiling,
+          sequences,
         };
-      });
 
-      const payload = {
-        version: 1,
-        targetId: target.id,
-        bundle: target.bundle,
-        atlasWidth: core.atlasWidth,
-        atlasHeight: core.atlasHeight,
-        frameRate: core.frameRate,
-        petId: core.petId,
-        materialWarnings: core.materialWarnings,
-        maxTextureSize,
-        needsTiling,
-        sequences,
-      };
+        const outPath = resolve(BASELINE_DIR, `${target.id}.json`);
+        writeJson(outPath, payload);
 
-      const outPath = resolve(BASELINE_DIR, `${target.id}.json`);
-      writeJson(outPath, payload);
-
-      expect(core.sequences.length).toBeGreaterThan(0);
-      expect(payload.sequences.every((s) => s.frameCount > 0)).toBe(true);
-    }, 120_000);
+        expect(core.sequences.length).toBeGreaterThan(0);
+        expect(payload.sequences.every((s) => s.frameCount > 0)).toBe(true);
+      },
+      120_000,
+    );
   }
 });

@@ -6,10 +6,7 @@ import RemoteLoadNotice from "./components/RemoteLoadNotice.vue";
 import { usePetLoader } from "./composables/usePetLoader";
 import { usePetAnimIndex } from "./composables/usePetAnimIndex";
 import { useViewerSettings } from "./composables/useViewerSettings";
-import {
-  findPetIndexEntry,
-  parsePetDeepLink,
-} from "./lib/pet-deep-link";
+import { findPetIndexEntry, parsePetDeepLink } from "./lib/pet-deep-link";
 import { isViewerWarningLink } from "./lib/viewer-warning";
 import type { PetAnimIndex, PetAnimIndexEntry } from "./lib/pet-anim-index";
 import {
@@ -257,9 +254,13 @@ function canNamedRemoteFailureDownload(): boolean {
           :initial-query="deepLinkQuery"
           @select="onRemoteSelect"
         />
-        <p class="drop-title">拖放 <code>ppets_*</code> 或 <code>pskilltimeline_spines_*</code> bundle 到此处</p>
+        <p class="drop-title">
+          拖放 <code>ppets_*</code> 或
+          <code>pskilltimeline_spines_*</code> bundle 到此处
+        </p>
         <p class="drop-hint">
-          或点击上方按钮选择文件；支持预转换 <code>.swfclip</code> / <code>.spineclip</code> 目录
+          或点击上方按钮选择文件；支持预转换 <code>.swfclip</code> /
+          <code>.spineclip</code> 目录
         </p>
         <p class="drop-hint">
           SWF 精灵需额外导入共享材质
@@ -313,7 +314,9 @@ function canNamedRemoteFailureDownload(): boolean {
           <p v-for="(w, i) in warnings" :key="i">
             <template v-if="isViewerWarningLink(w)">
               {{ w.message }}
-              <a :href="w.href" target="_blank" rel="noopener noreferrer">{{ w.href }}</a>
+              <a :href="w.href" target="_blank" rel="noopener noreferrer">{{
+                w.href
+              }}</a>
             </template>
             <template v-else>{{ w }}</template>
           </p>

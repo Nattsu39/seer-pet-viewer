@@ -197,7 +197,11 @@ export async function atlasPixelsToBitmap(
           source.byteOffset,
           source.byteLength,
         );
-  const prepared = await prepareAtlasRgbaOnly(data, pixels.width, pixels.height);
+  const prepared = await prepareAtlasRgbaOnly(
+    data,
+    pixels.width,
+    pixels.height,
+  );
   const bitmap = await rgbaToImageBitmap(
     prepared.width,
     prepared.height,

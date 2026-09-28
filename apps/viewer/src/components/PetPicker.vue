@@ -189,7 +189,8 @@ function onSelect(entry: PetAnimIndexEntry) {
         还有 {{ truncatedCount }} 条结果，请缩小搜索范围
       </p>
       <p class="pet-picker-footnote">
-        小于 5 MB 通过同域代理加载；已镜像的大文件从 GitHub 图床（jsDelivr）加载；未镜像的大文件请本地导入。
+        小于 5 MB 通过同域代理加载；已镜像的大文件从 GitHub
+        图床（jsDelivr）加载；未镜像的大文件请本地导入。
       </p>
     </div>
   </section>

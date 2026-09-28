@@ -1,6 +1,9 @@
 import { MAX_ANIMATION_FRAME_SIDE, validateCanvasSize } from "./canvas-size.js";
 export { validateCanvasSize } from "./canvas-size.js";
-import { createExportWorkerClient, type ExportWorkerClient } from "./export-worker-client.js";
+import {
+  createExportWorkerClient,
+  type ExportWorkerClient,
+} from "./export-worker-client.js";
 import { copyRgbaPixels } from "./pixels.js";
 import type {
   CapturedFrame,
@@ -75,7 +78,14 @@ export async function exportAnimation(
 
   if (client) {
     try {
-      return await exportViaWorker(client, source, options, fps, onProgress, label);
+      return await exportViaWorker(
+        client,
+        source,
+        options,
+        fps,
+        onProgress,
+        label,
+      );
     } finally {
       client.dispose();
     }
@@ -178,7 +188,9 @@ async function exportInline(
           onFrameDone: (done, total) =>
             onProgress?.({ phase: "encode", done, total }),
         })
-      : await (await import("./webp-encode.js")).encodeAnimatedWebp(frames, {
+      : await (
+          await import("./webp-encode.js")
+        ).encodeAnimatedWebp(frames, {
           width,
           height,
           fps,
