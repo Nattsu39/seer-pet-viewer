@@ -1,5 +1,12 @@
 # @seer-pet-anim/spine-renderer
 
+## 0.3.0
+
+### Patch Changes
+
+- @seer-pet-anim/anim-export@0.3.0
+  - @seer-pet-anim/spine-bundle@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes
