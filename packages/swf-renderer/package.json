@@ -40,7 +40,7 @@
   },
   "scripts": {
     "build": "node ../../tools/clean-package-dist.mjs && tsc -p tsconfig.json && node ../../tools/rewrite-worker-urls.mjs .",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p browser-tests/tsconfig.json",
     "test": "vitest run"
   },
   "dependencies": {
@@ -50,9 +50,9 @@
   "devDependencies": {
     "typescript": "^5.8.3",
     "vitest": "^3.2.4",
-    "pixi.js": "^8.9.2"
+    "pixi.js": "8.19.0"
   },
   "peerDependencies": {
-    "pixi.js": "^8.9.2"
+    "pixi.js": "8.19.0"
   }
 }

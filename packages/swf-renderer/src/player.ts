@@ -53,6 +53,13 @@ import {
 } from "./blend.js";
 import { grabModeId } from "./shaders.js";
 import { createSwfShader, updateSwfShaderResources } from "./swf-shader.js";
+import { GrabCapture, type SwfGrabStats } from "./grab-capture.js";
+import {
+  getEmbeddingDiagnostics,
+  getGrabHostDiagnostics,
+  hasGrabMaterials,
+  type SwfEmbeddingContext,
+} from "./embedding.js";
 import {
   destroyAtlasLayout,
   prepareAtlasTiles,
@@ -140,7 +147,7 @@ export class SwfPlayer {
   private frameIndex = 0;
   private playing = false;
   private tint: [number, number, number, number] = [1, 1, 1, 1];
-  private grabTexture: RenderTexture | null = null;
+  private grabCapture = new GrabCapture();
   private meshes: Mesh<Geometry, Shader>[] = [];
   private shaders: {
     normal: Shader | null;
@@ -176,7 +183,6 @@ export class SwfPlayer {
   };
   private readonly handleRendererResize = (): void => {
     if (this.mountMode !== "fixed") this.fitToView();
-    this.syncGrabTextureToRenderer();
   };
 
   async mount(
@@ -220,12 +226,19 @@ export class SwfPlayer {
       resolution: window.devicePixelRatio || 1,
       autoDensity: true,
       preference: "webgl",
+      useBackBuffer: hasGrabMaterials(clip) && !options.transparent,
     });
     if (this.destroyed) {
       app.destroy(true, { children: true });
       throw new DOMException("Mount aborted", "AbortError");
     }
     this.app = app;
+    if (hasGrabMaterials(clip)) {
+      const diagnostics = SwfPlayer.getEmbeddingDiagnostics(clip, {
+        renderer: app.renderer,
+      });
+      if (diagnostics.length) throw new Error(diagnostics.join("; "));
+    }
     parent.appendChild(this.app.canvas);
     this.hostResizeObserver = new ResizeObserver(() => this.app?.resize());
     this.hostResizeObserver.observe(parent);
@@ -237,7 +250,7 @@ export class SwfPlayer {
   }
 
   /** Attach to a borrowed WebGL renderer. Host owns rendering, ordering and masks.
-   * Grab materials require standalone compositing and are explicitly rejected.
+   * Grab materials capture the current render target at their draw boundary.
    */
   async mountInto(
     parent: Container,
@@ -248,7 +261,10 @@ export class SwfPlayer {
     if (this.mounting || this.clip || this.destroyed)
       throw new Error("Use a fresh player for mounting");
     options.signal?.throwIfAborted();
-    const diagnostics = SwfPlayer.getEmbeddingDiagnostics(clip);
+    const diagnostics = SwfPlayer.getEmbeddingDiagnostics(clip, {
+      renderer,
+      parent,
+    });
     if (diagnostics.length) throw new Error(diagnostics.join("; "));
     if (!(renderer instanceof WebGLRenderer))
       throw new Error("A compatible Pixi WebGLRenderer is required");
@@ -262,19 +278,17 @@ export class SwfPlayer {
       this.initializeGraphics(parent, clip, options),
     );
   }
-  static getEmbeddingDiagnostics(clip: SwfClipData): string[] {
-    return clip.sequences.some((seq) =>
-      seq.frames.some((frame) =>
-        frame.mesh.subMeshes.some((mesh) => needsGrabPass(mesh.material)),
-      ),
-    )
-      ? [
-          "SWF grab materials require standalone canvas compositing; shared-scene background capture is unsupported",
-        ]
-      : [];
+  static getEmbeddingDiagnostics(
+    clip: SwfClipData,
+    context: SwfEmbeddingContext = {},
+  ): string[] {
+    return getEmbeddingDiagnostics(clip, context);
   }
   getContainer(): Container {
     return this.root;
+  }
+  getGrabStats(): SwfGrabStats {
+    return this.grabCapture.getStats();
   }
 
   private async withMountCancellation(
@@ -336,6 +350,27 @@ export class SwfPlayer {
 
     this.root.addChild(this.stage);
     parent.addChild(this.root);
+    if (hasGrabMaterials(clip)) {
+      this.root.onRender = (renderer) => {
+        const diagnostics = getGrabHostDiagnostics(this.root);
+        if (diagnostics.length) throw new Error(diagnostics.join("; "));
+        if (!(renderer instanceof WebGLRenderer))
+          throw new Error("SWF grab requires WebGL2");
+        const targets = renderer.renderTarget;
+        if (
+          targets.mipLevel !== 0 ||
+          targets.layer !== 0 ||
+          targets.renderTarget.colorTextures.length !== 1 ||
+          !["rgba8unorm", "bgra8unorm"].includes(
+            targets.renderTarget.colorTexture.format,
+          )
+        ) {
+          throw new Error(
+            "SWF grab requires a single RGBA8 color target at mip 0 / layer 0",
+          );
+        }
+      };
+    }
 
     if (this.atlasLayout.plan) {
       this.tileShaders = this.atlasLayout.tiles.map((entry) => ({
@@ -434,10 +469,7 @@ export class SwfPlayer {
     }
     this.shaders = { normal: null, pma: null, grab: null, mask: null };
     this.clearMeshes();
-    if (this.grabTexture) {
-      this.grabTexture.destroy(true);
-      this.grabTexture = null;
-    }
+    this.grabCapture.destroy();
     destroyAtlasLayout(this.atlasLayout);
     this.atlasLayout = null;
     this.hostResizeObserver?.disconnect();
@@ -700,7 +732,6 @@ export class SwfPlayer {
         this.renderer.background.alpha = 1;
         this.renderer.background.color = options.background;
       }
-      this.resizeGrabTexture(layout.width, layout.height);
 
       const renderFrame = (i: number) => {
         try {
@@ -749,7 +780,6 @@ export class SwfPlayer {
         );
       } finally {
         exportRT.destroy(true);
-        this.syncGrabTextureToRenderer();
       }
     } finally {
       this.renderer.background.color = savedBgColor;
@@ -1009,10 +1039,21 @@ export class SwfPlayer {
     this.meshes = [];
   }
 
-  private addSubMeshMeshesToStage(meshes: Mesh<Geometry, Shader>[]): void {
+  private addSubMeshMeshesToStage(
+    meshes: Mesh<Geometry, Shader>[],
+    material: SwfSubMesh["material"],
+    parent = this.stage,
+  ): void {
     if (meshes.length === 0) return;
+    if (needsGrabPass(material)) {
+      parent.addChild(
+        this.grabCapture.instruction([
+          ...new Set(meshes.map((mesh) => mesh.shader!)),
+        ]),
+      );
+    }
     if (meshes.length === 1) {
-      this.stage.addChild(meshes[0]!);
+      parent.addChild(meshes[0]!);
       this.meshes.push(meshes[0]!);
       return;
     }
@@ -1021,7 +1062,7 @@ export class SwfPlayer {
       group.addChild(mesh);
       this.meshes.push(mesh);
     }
-    this.stage.addChild(group);
+    parent.addChild(group);
   }
 
   private renderFrame(
@@ -1053,15 +1094,16 @@ export class SwfPlayer {
           const maskMeshes = this.buildSubMeshMeshes(frame, subMesh, "mask");
           i++;
 
-          const contentMeshes: Mesh<Geometry, Shader>[] = [];
+          const clipped = new Container();
           while (
             i < subMeshes.length &&
             needsStencilTest(subMeshes[i]!.material)
           ) {
             const masked = subMeshes[i]!;
-            if (needsGrabPass(masked.material)) this.snapshotGrab();
-            contentMeshes.push(
-              ...this.buildSubMeshMeshes(frame, masked, "content"),
+            this.addSubMeshMeshesToStage(
+              this.buildSubMeshMeshes(frame, masked, "content"),
+              masked.material,
+              clipped,
             );
             i++;
           }
@@ -1070,8 +1112,7 @@ export class SwfPlayer {
             i++;
           }
 
-          if (contentMeshes.length > 0 && maskMeshes.length > 0) {
-            const clipped = new Container();
+          if (clipped.children.length > 0 && maskMeshes.length > 0) {
             const maskRoot =
               maskMeshes.length === 1 ? maskMeshes[0]! : new Container();
             if (maskMeshes.length > 1) {
@@ -1081,12 +1122,7 @@ export class SwfPlayer {
             clipped.setMask({
               mask: maskRoot,
               inverse: false,
-              channel: "alpha",
             });
-            for (const contentMesh of contentMeshes) {
-              clipped.addChild(contentMesh);
-              this.meshes.push(contentMesh);
-            }
             for (const maskMesh of maskMeshes) {
               this.meshes.push(maskMesh);
             }
@@ -1105,12 +1141,8 @@ export class SwfPlayer {
           continue;
         }
 
-        if (needsGrabPass(material)) {
-          this.snapshotGrab();
-        }
-
         const meshes = this.buildSubMeshMeshes(frame, subMesh, "content");
-        this.addSubMeshMeshesToStage(meshes);
+        this.addSubMeshMeshesToStage(meshes, material);
         i++;
       } catch (e) {
         throw new Error(
@@ -1336,6 +1368,8 @@ export class SwfPlayer {
         mulColors,
         addColors,
         q * 4,
+        // Repeated coverage changes nonlinear grab and stencil results.
+        { expandGeometryAtSeams: !grab && !mask },
       );
       for (const slice of slices) {
         appendSlice(slice);
@@ -1405,7 +1439,9 @@ export class SwfPlayer {
     const mesh = new Mesh({
       geometry,
       shader,
-      texture,
+      // The shader samples the straight-alpha atlas, but emits PMA for grab.
+      // MeshPipe selects its blend state from this texture's alpha mode.
+      texture: grab ? Texture.WHITE : texture,
     }) as Mesh<Geometry, Shader>;
 
     if (!mask) {
@@ -1439,79 +1475,6 @@ export class SwfPlayer {
     return this.shaders.normal!;
   }
 
-  private recreateGrabShader(): void {
-    if (!this.clip) return;
-    const grabSource = this.grabTexture?.source ?? null;
-    if (this.tileShaders && this.atlasLayout) {
-      for (let i = 0; i < this.tileShaders.length; i++) {
-        const entry = this.atlasLayout.tiles[i]!;
-        const set = this.tileShaders[i]!;
-        set.grab.destroy();
-        set.grab = createSwfShader(
-          entry.texture,
-          true,
-          this.tint,
-          entry.tile.width,
-          entry.tile.height,
-          false,
-          grabSource,
-        );
-      }
-      this.shaders.grab = this.tileShaders[0]!.grab;
-      return;
-    }
-    const primaryTile = this.atlasLayout?.tiles[0];
-    const atlasW = this.atlasLayout?.plan
-      ? primaryTile!.tile.width
-      : this.clip.atlasWidth;
-    const atlasH = this.atlasLayout?.plan
-      ? primaryTile!.tile.height
-      : this.clip.atlasHeight;
-    this.shaders.grab?.destroy();
-    this.shaders.grab = createSwfShader(
-      this.texture,
-      true,
-      this.tint,
-      atlasW,
-      atlasH,
-      false,
-      grabSource,
-    );
-  }
-
-  private syncGrabTextureToRenderer(): void {
-    if (!this.renderer) return;
-    const w = Math.max(1, this.renderer.width);
-    const h = Math.max(1, this.renderer.height);
-    this.resizeGrabTexture(w, h);
-  }
-
-  private ensureGrabTexture(): RenderTexture {
-    this.syncGrabTextureToRenderer();
-    return this.grabTexture!;
-  }
-
-  private resizeGrabTexture(width: number, height: number): void {
-    if (
-      this.grabTexture &&
-      (this.grabTexture.width !== width || this.grabTexture.height !== height)
-    ) {
-      this.grabTexture.destroy(true);
-      this.grabTexture = null;
-    }
-    if (!this.grabTexture) {
-      this.grabTexture = this.createGrabTexture(width, height);
-      this.recreateGrabShader();
-    }
-  }
-
-  private createGrabTexture(width: number, height: number): RenderTexture {
-    const rt = RenderTexture.create({ width, height });
-    rt.source.scaleMode = "nearest";
-    rt.source.alphaMode = "no-premultiply-alpha";
-    return rt;
-  }
-
   private applyExportTransform(
     bounds: { minX: number; minY: number; maxX: number; maxY: number },
     width: number,
@@ -1527,14 +1490,5 @@ export class SwfPlayer {
       width / 2 - cx * pixelsPerUnitX,
       height / 2 - cy * pixelsPerUnitY,
     );
-  }
-
-  private snapshotGrab(): void {
-    const rt = this.ensureGrabTexture();
-    this.renderer.render({
-      container: this.app.stage,
-      target: rt,
-      clear: true,
-    });
   }
 }

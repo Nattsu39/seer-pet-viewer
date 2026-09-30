@@ -1,0 +1,13 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ES2022", "DOM"],
+    "paths": {
+      "@seer-pet-anim/swf-renderer": ["../src/index.ts"],
+      "@seer-pet-anim/swf-bundle": ["../../swf-bundle/src/index.ts"],
+      "@seer-pet-anim/swf-bundle/parse": ["../../swf-bundle/src/parse.ts"]
+    }
+  },
+  "include": ["*.ts"]
+}

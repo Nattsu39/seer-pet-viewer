@@ -175,26 +175,20 @@ const swfGrabBitGl = {
   vertex: {
     header: /* glsl */ `
       in float aGrabMode;
-      out vec2 vScreenUV;
       out float vGrabMode;
     `,
     start: /* glsl */ `
       vGrabMode = aGrabMode;
     `,
-    end: /* glsl */ `
-      vec2 ndc = gl_Position.xy / gl_Position.w;
-      vScreenUV = ndc * 0.5 + 0.5;
-      vScreenUV.y = 1.0 - vScreenUV.y;
-    `,
   },
   fragment: {
     header: /* glsl */ `
       uniform sampler2D uGrabTexture;
-      in vec2 vScreenUV;
+      uniform vec2 uGrabSize;
       in float vGrabMode;
     `,
     main: /* glsl */ `
-      vec4 grab = texture(uGrabTexture, vScreenUV);
+      vec4 grab = texture(uGrabTexture, gl_FragCoord.xy / uGrabSize);
       float srcA = outColor.a;
       if (vGrabMode == 1.0) {
         outColor = min(grab, outColor);
@@ -211,6 +205,7 @@ const swfGrabBitGl = {
         outColor = mix(2.0 * grab * outColor, 1.0 - (1.0 - grab) * (1.0 - 2.0 * (outColor - 0.5)), step(0.5, outColor));
         outColor.a = srcA;
       }
+      outColor.rgb *= outColor.a;
     `,
   },
 };
@@ -361,6 +356,9 @@ export function createSwfShader(
         ? {
             uGrabTexture: grabSource ?? Texture.EMPTY.source,
             uGrabSampler: (grabSource ?? Texture.EMPTY.source).style,
+            grabUniforms: new UniformGroup({
+              uGrabSize: { value: new Float32Array([1, 1]), type: "vec2<f32>" },
+            }),
           }
         : {}),
     },

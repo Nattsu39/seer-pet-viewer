@@ -7,6 +7,11 @@ export {
 export * from "./blend.js";
 export * from "./shaders.js";
 export {
+  SWF_GRAB_REQUIREMENTS,
+  type SwfEmbeddingContext,
+} from "./embedding.js";
+export type { SwfGrabStats } from "./grab-capture.js";
+export {
   SWF_HIGH_PRECISION_ATLAS_MAX_SIDE,
   useHighPrecisionAtlasSampling,
 } from "./swf-shader.js";

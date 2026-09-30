@@ -201,7 +201,7 @@ importers:
         version: link:../swf-bundle
     devDependencies:
       pixi.js:
-        specifier: ^8.9.2
+        specifier: 8.19.0
         version: 8.19.0
       typescript:
         specifier: ^5.8.3

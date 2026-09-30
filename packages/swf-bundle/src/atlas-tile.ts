@@ -483,7 +483,10 @@ function bilinearQuadPosition(
   return [lerp(x0, x1, tv), lerp(y0, y1, tv)];
 }
 
-/** 将单个 axis-aligned quad 按 tile 网格切成若干片（跨 tile 时） */
+/**
+ * 将单个 axis-aligned quad 按 tile 网格切成若干片（跨 tile 时）。
+ * 对 grab / stencil 等重复覆盖会改变结果的材质，禁用接缝几何外扩。
+ */
 export function sliceQuadAcrossTiles(
   positions: ArrayLike<number>,
   uvs: ArrayLike<number>,
@@ -494,6 +497,7 @@ export function sliceQuadAcrossTiles(
   mulColors?: ArrayLike<number>,
   addColors?: ArrayLike<number>,
   vertBase?: number,
+  options: { expandGeometryAtSeams?: boolean } = {},
 ): TileQuadSlice[] {
   const bounds = getQuadPixelBounds(
     uvs,
@@ -556,20 +560,32 @@ export function sliceQuadAcrossTiles(
     const clipMinY = Math.max(pyMin, tile.y);
     const clipMaxY = Math.min(pyMax, tilePyMax(tile));
     if (clipMinX > clipMaxX || clipMinY > clipMaxY) continue;
+    if (
+      options.expandGeometryAtSeams === false &&
+      (clipMinX === clipMaxX || clipMinY === clipMaxY)
+    )
+      continue;
 
     const { geomMinX, geomMaxX, geomMinY, geomMaxY } =
-      expandSliceGeometryAtSeams(
-        tile,
-        plan,
-        pxMin,
-        pyMin,
-        pxMax,
-        pyMax,
-        clipMinX,
-        clipMaxX,
-        clipMinY,
-        clipMaxY,
-      );
+      options.expandGeometryAtSeams === false
+        ? {
+            geomMinX: clipMinX,
+            geomMaxX: clipMaxX,
+            geomMinY: clipMinY,
+            geomMaxY: clipMaxY,
+          }
+        : expandSliceGeometryAtSeams(
+            tile,
+            plan,
+            pxMin,
+            pyMin,
+            pxMax,
+            pyMax,
+            clipMinX,
+            clipMaxX,
+            clipMinY,
+            clipMaxY,
+          );
 
     const tu0 = (geomMinX - pxMin) / (pxMax - pxMin);
     const tu1 = (geomMaxX - pxMin) / (pxMax - pxMin);
