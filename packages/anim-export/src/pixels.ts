@@ -44,8 +44,10 @@ export function flipPixelsY(
   return new Uint8ClampedArray(flipRgbaY(pixels, width, height));
 }
 
-/** Spine / WebGL 预乘 alpha → 直通 alpha 供编码器使用 */
-export function unpremultiplyPixels(pixels: Uint8ClampedArray): void {
+/** WebGL 预乘 alpha → 直通 alpha 供编码器使用 */
+export function unpremultiplyPixels(
+  pixels: Uint8Array | Uint8ClampedArray,
+): void {
   for (let i = 0; i < pixels.length; i += 4) {
     const a = pixels[i + 3]! / 255;
     if (a <= 0) {

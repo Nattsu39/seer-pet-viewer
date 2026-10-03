@@ -185,10 +185,11 @@ test("standalone manual drawing and frame capture share grab semantics", async (
         (Math.floor(frame.height / 2) * frame.width +
           Math.floor(frame.width / 2)) *
         4;
-      // The existing capture API returns framebuffer (premultiplied) RGBA.
+      // Captured frames use straight alpha for PNG/WebP encoding.
       const center = frame.pixels.slice(index, index + 4);
       assert(
-        center.every((value) => Math.abs(value - 128) <= 2),
+        center.slice(0, 3).every((value) => Math.abs(value - 255) <= 2) &&
+          Math.abs(center[3]! - 128) <= 2,
         `captured grab: ${center}`,
       );
       frames++;
@@ -205,6 +206,80 @@ test("standalone manual drawing and frame capture share grab semantics", async (
     host.remove();
   }
 });
+
+for (const alpha of [0.25, 0.5, 0.75, 1]) {
+  test(`transparent capture preserves PNG colors at alpha ${alpha}`, async () => {
+    const host = document.createElement("div");
+    host.style.cssText = "width:32px;height:32px";
+    document.body.append(host);
+    const clip = await createClip([
+      {
+        material: {},
+        quads: [{ rect: [0, 0, 32, 32], color: [0.8, 0.4, 0.2, alpha] }],
+      },
+    ]);
+    const player = new SwfPlayer();
+    try {
+      await player.mount(host, clip, { clock: "manual" });
+      player.setSequence("standby");
+      let frames = 0;
+      for await (const frame of player.captureFrames({
+        sequence: "standby",
+        scale: 0.01,
+        background: "transparent",
+      })) {
+        const x = Math.floor(frame.width / 2);
+        const y = Math.floor(frame.height / 2);
+        const offset = (y * frame.width + x) * 4;
+        const center = frame.pixels.slice(offset, offset + 4);
+        const expected = [204, 102, 51, Math.round(alpha * 255)];
+        assert(
+          center.every((value, i) => Math.abs(value - expected[i]!) <= 2),
+          `straight-alpha capture: ${center}; expected ${expected}`,
+        );
+
+        const canvas = new OffscreenCanvas(frame.width, frame.height);
+        const context = canvas.getContext("2d")!;
+        context.putImageData(
+          new ImageData(
+            new Uint8ClampedArray(frame.pixels),
+            frame.width,
+            frame.height,
+          ),
+          0,
+          0,
+        );
+        const bitmap = await createImageBitmap(
+          await canvas.convertToBlob({ type: "image/png" }),
+        );
+        try {
+          context.fillStyle = "black";
+          context.fillRect(0, 0, frame.width, frame.height);
+          context.drawImage(bitmap, 0, 0);
+          const composite = context.getImageData(x, y, 1, 1).data;
+          const expectedComposite = [204, 102, 51].map((value) =>
+            Math.round(value * alpha),
+          );
+          expectedComposite.push(255);
+          assert(
+            composite.every(
+              (value, i) => Math.abs(value - expectedComposite[i]!) <= 2,
+            ),
+            `PNG on black: ${composite}; expected ${expectedComposite}`,
+          );
+        } finally {
+          bitmap.close();
+        }
+        frames++;
+      }
+      assert(frames === 1, "capture did not yield the selected frame");
+    } finally {
+      player.destroy();
+      clip.atlas.close();
+      host.remove();
+    }
+  });
+}
 
 test("paused grab reads changed background and excludes later HUD", () =>
   scene([grab("invert", 1)], ({ renderer, stage, background, player }) => {

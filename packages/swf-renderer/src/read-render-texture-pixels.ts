@@ -1,4 +1,5 @@
 import type { Application, RenderTexture } from "pixi.js";
+import { unpremultiplyPixels } from "@seer-pet-anim/anim-export/capture";
 import { copyRgbaPixels } from "./copy-rgba.js";
 
 type GlExportRenderer = Application["renderer"] & {
@@ -11,7 +12,7 @@ type GlExportRenderer = Application["renderer"] & {
   };
 };
 
-/** 从 RenderTexture 读取紧凑 RGBA，避免 Pixi `new Uint8ClampedArray(buffer)` 整段 buffer 陷阱 */
+/** 读取紧凑 RGBA；WebGL 路径翻转行并还原为编码器需要的直通 alpha。 */
 export function readRenderTexturePixels(
   app: Application,
   target: RenderTexture,
@@ -42,5 +43,6 @@ export function readRenderTexturePixels(
     const srcRow = (height - 1 - y) * rowBytes;
     out.set(raw.subarray(srcRow, srcRow + rowBytes), y * rowBytes);
   }
+  unpremultiplyPixels(out);
   return out;
 }
