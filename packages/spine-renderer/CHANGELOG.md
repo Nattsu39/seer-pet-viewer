@@ -1,5 +1,13 @@
 # @seer-pet-anim/spine-renderer
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [3ebc729]
+  - @seer-pet-anim/anim-export@0.3.1
+  - @seer-pet-anim/spine-bundle@0.3.1
+
 ## 0.3.0
 
 ### Patch Changes
