@@ -1,6 +1,6 @@
 {
   "name": "@seer-pet-anim/swf-rebuild",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Rebuild Flash pet timelines from Unity FlashTools animation bundles",
   "type": "module",
   "license": "MIT",
