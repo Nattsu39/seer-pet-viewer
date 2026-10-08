@@ -1,11 +1,11 @@
 import { BitReader, Reader } from "./binary.js";
-import { readTags, type SwfFile, type Tag } from "./swf.js";
+import { readTags, type Matrix, type SwfFile, type Tag } from "./swf.js";
 import type { Clip, Sequence } from "./types.js";
 
 type Translation = [number, number];
 interface Placement {
   id: number;
-  translation: Translation;
+  matrix: Matrix;
 }
 interface TimelineFrame {
   labels: string[];
@@ -38,7 +38,7 @@ const definitionCodes = new Set([
 export const isCharacterDefinition = (tag: Tag): boolean =>
   definitionCodes.has(tag.code);
 
-function readTranslation(reader: Reader): Translation {
+function readMatrix(reader: Reader): Matrix {
   const bits = new BitReader(reader.data.slice(reader.position));
   let a = 1,
     d = 1,
@@ -60,10 +60,16 @@ function readTranslation(reader: Reader): Translation {
     bits.read(count, true),
   ];
   reader.take(bits.bytes);
+  return [a, b, c, d, ...translation];
+}
+
+/** 仅对保留的包装层变换要求纯平移；普通内容帧已展开到 bundle 顶点。 */
+function translationOf(placement: Placement): Translation {
+  const [a, b, c, d, x, y] = placement.matrix;
   if (a !== 1 || d !== 1 || b !== 0 || c !== 0) {
     throw new Error("Source action/idle placement must use translation only");
   }
-  return translation;
+  return [x, y];
 }
 
 function readIdentityColor(reader: Reader): void {
@@ -102,10 +108,10 @@ function timeline(tag: Tag): TimelineFrame[] {
       if (flags & 1 && !previous)
         throw new Error("Source move references an empty depth");
       const id = flags & 2 ? reader.u16() : previous?.id;
-      const translation =
+      const matrix =
         flags & 4
-          ? readTranslation(reader)
-          : (previous?.translation ?? ([0, 0] as Translation));
+          ? readMatrix(reader)
+          : (previous?.matrix ?? ([1, 0, 0, 1, 0, 0] as Matrix));
       if (flags & 8) readIdentityColor(reader);
       if (flags & 16) reader.u16(); // Ratio 不影响 MovieClip 包装。
       if (flags & 32) reader.string();
@@ -113,7 +119,7 @@ function timeline(tag: Tag): TimelineFrame[] {
         throw new Error("Source wrapper uses clipping or clip actions");
       if (id === undefined || reader.position !== entry.data.length)
         throw new Error("Invalid source placement");
-      objects.set(depth, { id, translation });
+      objects.set(depth, { id, matrix });
     } else if (entry.code === 28) {
       objects.delete(reader.u16());
     } else if (entry.code === 43) {
@@ -217,6 +223,7 @@ export function discoverSource(file: SwfFile, clip: Clip): SourceLayout {
         throw new Error(`Unmatched or duplicate action label ${name}`);
       seen.add(name);
       const parent = singlePlacement(frame);
+      const parentTranslation = translationOf(parent);
       const wrapper = sprites.get(parent.id);
       if (!wrapper) throw new Error(`Missing action sprite ${parent.id}`);
       const frames = timeline(wrapper);
@@ -227,31 +234,29 @@ export function discoverSource(file: SwfFile, clip: Clip): SourceLayout {
         last = singlePlacement(frames[2]);
       if (!sprites.has(last.id))
         throw new Error("Common idle is not a MovieClip");
+      const idlePlacement = translationOf(last);
       const origin: Translation = [
-        -parent.translation[0],
-        -parent.translation[1],
+        -parentTranslation[0],
+        -parentTranslation[1],
       ];
-      const candidateOrigin: Translation = [
-        origin[0] - last.translation[0],
-        origin[1] - last.translation[1],
-      ];
-      if (
-        idleSpriteId !== undefined &&
-        (idleSpriteId !== last.id ||
-          idleOrigin!.some((value, index) => value !== candidateOrigin[index]))
-      ) {
-        throw new Error("Action wrappers disagree on common idle placement");
+      if (idleSpriteId !== undefined && idleSpriteId !== last.id) {
+        throw new Error("Action wrappers disagree on common idle sprite");
       }
       idleSpriteId = last.id;
-      idleOrigin = candidateOrigin;
+      // 首个包装确定 standby 的局部原点；其余包装保留各自的待机位移，
+      // 让同一待机子级在不同父层下仍呈现源文件中的相对位置。
+      idleOrigin ??= [
+        origin[0] - idlePlacement[0],
+        origin[1] - idlePlacement[1],
+      ];
       const className = symbols.get(parent.id);
       if (!className)
         throw new Error(`Missing SymbolClass binding for ${name}`);
       const idleAtStart = first.id === last.id;
       if (
         idleAtStart &&
-        first.translation.some(
-          (value, index) => value !== last.translation[index],
+        translationOf(first).some(
+          (value, index) => value !== idlePlacement[index],
         )
       ) {
         throw new Error("Initial and final idle placements differ");
@@ -261,6 +266,7 @@ export function discoverSource(file: SwfFile, clip: Clip): SourceLayout {
       // PlayerPetView 会在包装的第 2 帧停止，然后播放第一个子级。
       if (name === "appear") {
         const middle = singlePlacement(frames[1]);
+        const middleTranslation = translationOf(middle);
         const inner = sprites.get(middle.id);
         if (
           !inner ||
@@ -276,15 +282,15 @@ export function discoverSource(file: SwfFile, clip: Clip): SourceLayout {
         if (
           first.id !== last.id &&
           (first.id !== middle.id ||
-            first.translation.some(
-              (value, index) => value !== middle.translation[index],
+            translationOf(first).some(
+              (value, index) => value !== middleTranslation[index],
             ))
         ) {
           throw new Error(
             "Initial appear content differs from the frame-2 placement",
           );
         }
-        content = { ...middle, wrapper };
+        content = { id: middle.id, translation: middleTranslation, wrapper };
       }
       actions.push({
         id: parent.id,
@@ -292,7 +298,7 @@ export function discoverSource(file: SwfFile, clip: Clip): SourceLayout {
         origin,
         className,
         hit: validateEvents(sequence, true),
-        idlePlacement: last.translation,
+        idlePlacement,
         idleAtStart,
         ...(content ? { content } : {}),
       });

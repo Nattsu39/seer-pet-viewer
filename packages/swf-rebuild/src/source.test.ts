@@ -367,7 +367,7 @@ describe("structural source discovery", () => {
     );
     clip.sequences.push({ ...clip.sequences[1], name: "another" });
     expect(() => discoverSource(file, clip)).toThrow(
-      "disagree on common idle placement",
+      "Missing SymbolClass binding for another",
     );
   });
 
