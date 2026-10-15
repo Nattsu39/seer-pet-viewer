@@ -264,21 +264,7 @@ export async function parseSpineBundleCore(
   };
 }
 
-export function parsedSpineToJson(data: ParsedSpineBundle): SpineClipJson {
-  return {
-    petId: data.petId,
-    name: data.name,
-    atlasText: data.atlasText,
-    animations: data.animations,
-    scale: data.scale,
-    defaultMix: data.defaultMix,
-    textures: data.texturePixels.map(({ name, width, height }) => ({
-      name,
-      width,
-      height,
-    })),
-  };
-}
+export { parsedSpineToJson } from "./clip-data.js";
 
 export async function parseSpineBundle(
   data: ArrayBuffer | Uint8Array,

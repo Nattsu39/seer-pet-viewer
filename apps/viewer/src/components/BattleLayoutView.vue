@@ -10,7 +10,7 @@ import {
 import PetPicker from "./PetPicker.vue";
 import { SwfPlayer } from "@seer-pet-anim/swf-renderer";
 import { SpinePlayer } from "@seer-pet-anim/spine-renderer";
-import { ensureSwfClipAtlas } from "@seer-pet-anim/swf-bundle/parse";
+import { ensureSwfClipAtlas } from "@seer-pet-anim/swf-bundle";
 import { disposePetClip } from "../lib/dispose-pet-clip";
 import { shouldStartSceneDrag } from "../lib/scene-drag";
 import {

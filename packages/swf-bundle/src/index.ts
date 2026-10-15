@@ -30,3 +30,8 @@ export {
   getMaxTextureSize,
   resetMaxTextureSizeCache,
 } from "./max-texture-size.js";
+
+export {
+  extractAtlasBitmapFromBundle,
+  ensureSwfClipAtlas,
+} from "./atlas-lifecycle.js";

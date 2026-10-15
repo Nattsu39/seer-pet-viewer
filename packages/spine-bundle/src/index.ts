@@ -8,9 +8,9 @@ export {
   parseSpineBundle,
   parseSpineBundleCore,
   parseSpineBundleMetadata,
-  parsedSpineToJson,
-} from "./parse.js";
+} from "./parse-lazy.js";
 export {
+  parsedSpineToJson,
   buildSpineClipData,
   closeSpineClipData,
   loadSpineClipPackage,
