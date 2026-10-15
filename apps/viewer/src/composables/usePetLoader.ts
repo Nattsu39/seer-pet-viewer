@@ -1,4 +1,5 @@
 import { disposePetClip } from "../lib/dispose-pet-clip";
+import { readBundleMetadata } from "../lib/bundle-metadata";
 import { ref, watch } from "vue";
 import type { SwfClipData } from "@seer-pet-anim/swf-bundle";
 import {
@@ -11,7 +12,6 @@ import {
 } from "@seer-pet-anim/swf-bundle";
 import type { SpineClipData } from "@seer-pet-anim/spine-bundle";
 import {
-  detectBundleKind,
   parseSpineBundleInWorker,
   loadSpineClipPackage,
   type SpineClipJson,
@@ -135,7 +135,7 @@ export function usePetLoader(options?: {
     fileName: string,
     signal: AbortSignal,
   ) {
-    const kind = await detectBundleKind(buffer);
+    const kind = await readBundleMetadata("detect", buffer, signal);
     signal.throwIfAborted();
     if (kind === "video") {
       throw new Error("不支持的视频 bundle（VideoClip）");
@@ -200,7 +200,11 @@ export function usePetLoader(options?: {
     const t0 = performance.now();
     try {
       const buffer = await file.arrayBuffer();
-      const kind = await detectBundleKind(buffer);
+      const kind = await readBundleMetadata(
+        "detect",
+        buffer,
+        controller.signal,
+      );
       if (kind === "swf") {
         await tryAutoImportSharedMaterials();
       }
@@ -222,13 +226,13 @@ export function usePetLoader(options?: {
 
   async function applyMaterialBundleBuffer(buffer: ArrayBuffer) {
     const controller = loadController;
-    const { loadMaterialBundle } =
-      await import("@seer-pet-anim/swf-bundle/parse");
-    const { count, warnings: w } = await loadMaterialBundle(
-      buffer,
-      materialResolver,
-    );
+    const {
+      count,
+      warnings: w,
+      materials,
+    } = await readBundleMetadata("materials", buffer, controller.signal);
     controller.signal.throwIfAborted();
+    materialResolver.restore({ ...materialResolver.snapshot(), ...materials });
     sharedMaterialBuffer = buffer;
     materialCount.value = materialResolver.size;
 

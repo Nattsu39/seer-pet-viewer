@@ -112,6 +112,13 @@ export default defineConfig(({ command }) => ({
         ),
       },
       {
+        find: "@seer-pet-anim/spine-bundle/parse",
+        replacement: resolve(
+          __dirname,
+          "../../packages/spine-bundle/src/parse.ts",
+        ),
+      },
+      {
         find: "@seer-pet-anim/spine-bundle",
         replacement: resolve(
           __dirname,

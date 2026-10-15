@@ -1,4 +1,8 @@
-import type { SpineClipData, SpineClipJson } from "./types.js";
+import type {
+  ParsedSpineBundle,
+  SpineClipData,
+  SpineClipJson,
+} from "./types.js";
 import { scaleSpineAtlasText } from "./atlas-scale.js";
 import {
   atlasPixelsToBitmap,
@@ -111,4 +115,20 @@ export function closeSpineClipData(clip: SpineClipData): void {
   }
   clip.textures.clear();
   clip.skeletonBytes = new Uint8Array(0);
+}
+
+export function parsedSpineToJson(data: ParsedSpineBundle): SpineClipJson {
+  return {
+    petId: data.petId,
+    name: data.name,
+    atlasText: data.atlasText,
+    animations: data.animations,
+    scale: data.scale,
+    defaultMix: data.defaultMix,
+    textures: data.texturePixels.map(({ name, width, height }) => ({
+      name,
+      width,
+      height,
+    })),
+  };
 }

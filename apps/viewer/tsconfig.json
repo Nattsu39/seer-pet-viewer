@@ -18,6 +18,9 @@
       ],
       "@seer-pet-anim/swf-renderer": ["../../packages/swf-renderer/src"],
       "@seer-pet-anim/spine-bundle": ["../../packages/spine-bundle/src"],
+      "@seer-pet-anim/spine-bundle/parse": [
+        "../../packages/spine-bundle/src/parse.ts"
+      ],
       "@seer-pet-anim/spine-renderer": ["../../packages/spine-renderer/src"]
     }
   },
