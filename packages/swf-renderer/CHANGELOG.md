@@ -1,5 +1,13 @@
 # @seer-pet-anim/swf-renderer
 
+## 0.3.2
+
+### Patch Changes
+
+- Updated dependencies [51a828e]
+  - @seer-pet-anim/swf-bundle@0.3.2
+  - @seer-pet-anim/anim-export@0.3.2
+
 ## 0.3.1
 
 ### Patch Changes
