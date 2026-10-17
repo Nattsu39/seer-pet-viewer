@@ -7,13 +7,14 @@
  *   node tools/build-pet-index.mjs --local manifest.bytes --version 20260625181040
  */
 
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { fetchRemoteManifest } from "./lib/fetch-remote-manifest.mjs";
 import { parseNewseerManifest } from "./lib/yoo-manifest-parser.mjs";
 import { buildPetAnimIndex } from "./lib/pet-index-builder.mjs";
 import { resolveMirroredNamesForBuild } from "./lib/github-cdn-manifest.mjs";
+import { writeManifestIfChanged } from "./lib/write-manifest-if-changed.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -97,10 +98,8 @@ async function main() {
   const mirroredShared = index.sharedBundles.filter((bundle) => bundle.mirrored)
     .length;
 
-  mkdirSync(dirname(OUTPUT), { recursive: true });
-  writeFileSync(OUTPUT, JSON.stringify(index, null, 2) + "\n", "utf8");
-
-  console.log(`已写入 ${OUTPUT}`);
+  const changed = writeManifestIfChanged(OUTPUT, index);
+  console.log(changed ? `已写入 ${OUTPUT}` : `清单无变化，保留 ${OUTPUT}`);
   console.log(
     `共 ${manifest.bundles.length} 个 bundle，索引含 ${index.entries.length} 条精灵资源、${index.sharedBundles.length} 个共享包`,
   );

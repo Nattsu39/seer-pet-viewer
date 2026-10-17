@@ -1,6 +1,7 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { writeManifestIfChanged } from "./write-manifest-if-changed.mjs";
 
 /** GitHub 图床仓库中 PetAnimPackage 目录的前缀 */
 export const GITHUB_CDN_REPO = "SeerAPI/seer-unity-assets-pet_anim_part";
@@ -131,8 +132,7 @@ export function writeGithubCdnManifest(names, rootDir = resolve(__dirname, "..")
     names: [...names].sort(),
   };
 
-  mkdirSync(dirname(manifestPath), { recursive: true });
-  writeFileSync(manifestPath, JSON.stringify(payload, null, 2) + "\n", "utf8");
+  writeManifestIfChanged(manifestPath, payload);
   return manifestPath;
 }
 
