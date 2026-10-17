@@ -56,3 +56,14 @@ it("retains the full viewport for fully transparent frames", async () => {
     { index: 1, ...frame },
   ]);
 });
+
+it("cancels during bounds preparation without waiting for the next animation frame", async () => {
+  vi.stubGlobal("requestAnimationFrame", () => 1);
+  const controller = new AbortController();
+  const capture = vi.fn(render);
+  const stream = streamCapturedFrames(118, capture, true, controller.signal);
+  const next = stream.next();
+  controller.abort();
+  await expect(next).rejects.toMatchObject({ name: "AbortError" });
+  expect(capture).toHaveBeenCalledTimes(1);
+});

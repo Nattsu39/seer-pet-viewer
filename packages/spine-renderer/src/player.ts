@@ -31,6 +31,8 @@ import {
   planReferenceExport,
   resolveReferenceSequence,
   streamCapturedFrames,
+  throwIfAborted,
+  yieldCaptureTask,
 } from "@seer-pet-anim/anim-export/capture";
 import type {
   BattleCaptureOptions,
@@ -126,6 +128,7 @@ export class SpinePlayer {
   private readonly screenScratch = new Vector3();
   private readonly screenScratch2 = new Vector3();
   private exportSuspended = false;
+  private resizeAfterExport = false;
   private usesPma = true;
 
   async mount(
@@ -255,10 +258,12 @@ export class SpinePlayer {
   }
 
   setBackgroundColor(color: number): void {
+    if (this.captureClock) return;
     this.backgroundColor = color;
   }
 
   setSequence(name: string): void {
+    if (this.captureClock) return;
     this.selectSequence(name);
   }
 
@@ -435,7 +440,7 @@ export class SpinePlayer {
       if (options.battle) {
         // 战斗视口：锚点为战斗布局中心，不需要参考序列归一
         if (savedSequence !== options.sequence) {
-          this.setSequence(options.sequence);
+          this.selectSequence(options.sequence);
         }
       } else {
         const refName = resolveReferenceSequence(this.clip.animations);
@@ -443,13 +448,16 @@ export class SpinePlayer {
         if (refFrameTotal <= 0) return;
 
         if (savedSequence !== refName) {
-          this.setSequence(refName);
+          this.selectSequence(refName);
         }
         // 必须在切到目标序列前步进参考序列求包围盒
-        refBounds = this.computeSequenceBounds(refFrameTotal);
+        refBounds = await this.computeSequenceBounds(
+          refFrameTotal,
+          options.signal,
+        );
         refScale = computeSpineNativePixelsPerUnit(this.clip.scale);
         if (options.sequence !== refName) {
-          this.setSequence(options.sequence);
+          this.selectSequence(options.sequence);
         }
       }
 
@@ -470,7 +478,7 @@ export class SpinePlayer {
       } else {
         bounds = options.viewport
           ? refBounds
-          : this.computeSequenceBounds(frameTotal);
+          : await this.computeSequenceBounds(frameTotal, options.signal);
         const referenceLayout = planReferenceExport(
           bounds,
           refScale,
@@ -518,37 +526,56 @@ export class SpinePlayer {
         frameTotal,
         renderFrame,
         !battleLayout && !keepViewport,
+        options.signal,
       );
     } finally {
-      this.renderWithAlphaClear = false;
-      this.backgroundColor = savedBg;
-      this.canvas.width = savedCanvasW;
-      this.canvas.height = savedCanvasH;
-      this.renderer.resize(ResizeMode.Expand);
-      this.skeleton.scaleX = savedScaleX;
-      this.userZoom = savedUserZoom;
-      this.cameraX = savedCameraX;
-      this.cameraY = savedCameraY;
-      if (this.mountMode === "fixed" && this.fixedTransform) {
-        this.applyFixedCamera();
-      } else {
-        this.updateCamera(false);
+      try {
+        if (!this.destroyed) {
+          this.renderWithAlphaClear = false;
+          this.backgroundColor = savedBg;
+          this.canvas.width = savedCanvasW;
+          this.canvas.height = savedCanvasH;
+          const parent = this.canvas.parentElement;
+          if (this.resizeAfterExport && parent) {
+            const resolution = window.devicePixelRatio || 1;
+            this.canvas.width = Math.max(
+              1,
+              Math.floor(parent.clientWidth * resolution),
+            );
+            this.canvas.height = Math.max(
+              1,
+              Math.floor(parent.clientHeight * resolution),
+            );
+          }
+          this.renderer.resize(ResizeMode.Expand);
+          this.skeleton.scaleX = savedScaleX;
+          this.userZoom = savedUserZoom;
+          this.cameraX = savedCameraX;
+          this.cameraY = savedCameraY;
+          if (this.mountMode === "fixed" && this.fixedTransform) {
+            this.applyFixedCamera();
+          } else {
+            this.updateCamera(false);
+          }
+          if (
+            savedSequence &&
+            savedSequence !== this.state.getCurrent(0)?.animation?.name
+          ) {
+            this.selectSequence(savedSequence);
+          }
+          this.frameIndex = savedFrame;
+          this.applyPose(this.frameIndex / SPINE_PREVIEW_FPS);
+          this.render();
+          if (wasPlaying) this.play();
+        }
+      } finally {
+        this.exportSuspended = false;
+        this.resizeAfterExport = false;
+        this.clock = playbackClock;
+        this.captureClock = null;
+        this.playing = !this.destroyed && playbackClock.playing;
+        if (!this.destroyed) this.sampleClock();
       }
-      if (
-        savedSequence &&
-        savedSequence !== this.state.getCurrent(0)?.animation?.name
-      ) {
-        this.setSequence(savedSequence);
-      }
-      this.frameIndex = savedFrame;
-      this.applyPose(this.frameIndex / SPINE_PREVIEW_FPS);
-      this.render();
-      this.exportSuspended = false;
-      if (wasPlaying) this.play();
-      this.clock = playbackClock;
-      this.captureClock = null;
-      this.playing = playbackClock.playing;
-      this.sampleClock();
     }
   }
 
@@ -559,6 +586,7 @@ export class SpinePlayer {
   }
 
   fitToView(): void {
+    if (this.exportSuspended) return;
     if (this.mountMode === "fixed") return;
     this.userZoom = 1;
     this.updateCamera(true);
@@ -582,12 +610,14 @@ export class SpinePlayer {
       position: { ...position },
       scale: { ...scale },
     };
+    if (this.exportSuspended) return;
     this.skeleton.scaleX = scale.x < 0 ? -1 : 1;
     this.skeleton.updateWorldTransform();
     if (!this.manual) this.render();
   }
 
   setViewportPosition(x: number, y: number): void {
+    if (this.exportSuspended) return;
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     this.cameraX = x;
     this.cameraY = y;
@@ -600,6 +630,7 @@ export class SpinePlayer {
   }
 
   setZoom(zoom: number): void {
+    if (this.exportSuspended) return;
     if (!Number.isFinite(zoom)) return;
     const clampedZoom = Math.max(0.1, Math.min(zoom, 16));
     this.userZoom = 1 / clampedZoom;
@@ -631,7 +662,7 @@ export class SpinePlayer {
     };
 
     canvas.addEventListener("pointerdown", (e: PointerEvent) => {
-      if (pinching || e.button !== 0) return;
+      if (this.exportSuspended || pinching || e.button !== 0) return;
       dragging = true;
       canvas.setPointerCapture(e.pointerId);
       startX = e.clientX;
@@ -643,7 +674,7 @@ export class SpinePlayer {
     canvas.addEventListener("pointercancel", endDrag);
     canvas.addEventListener("lostpointercapture", endDrag);
     canvas.addEventListener("pointermove", (e: PointerEvent) => {
-      if (!dragging || pinching) return;
+      if (this.exportSuspended || !dragging || pinching) return;
       const delta = this.screenDeltaToWorld(
         e.clientX - startX,
         e.clientY - startY,
@@ -748,6 +779,10 @@ export class SpinePlayer {
   }
 
   private resize(): void {
+    if (this.exportSuspended) {
+      this.resizeAfterExport = true;
+      return;
+    }
     const parent = this.canvas.parentElement;
     if (!parent) return;
     const dpr = window.devicePixelRatio || 1;
@@ -776,12 +811,15 @@ export class SpinePlayer {
     }
   };
 
-  private computeSequenceBounds(frameTotal: number): {
+  private async computeSequenceBounds(
+    frameTotal: number,
+    signal?: AbortSignal,
+  ): Promise<{
     minX: number;
     minY: number;
     maxX: number;
     maxY: number;
-  } {
+  }> {
     const offset = new Vector2();
     const size = new Vector2();
     let minX = Infinity;
@@ -789,6 +827,8 @@ export class SpinePlayer {
     let maxX = -Infinity;
     let maxY = -Infinity;
     for (let i = 0; i < frameTotal; i++) {
+      throwIfAborted(signal);
+      if (signal && i % 8 === 0) await yieldCaptureTask(signal);
       this.applyPose(i / SPINE_PREVIEW_FPS);
       this.skeleton.updateWorldTransform();
       this.skeleton.getBounds(offset, size);

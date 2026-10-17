@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Mp4ExportNotice from "./Mp4ExportNotice.vue";
 import {
   computed,
   onBeforeUnmount,
@@ -47,7 +48,11 @@ const { autoImportSharedMaterials, canvasBackgroundColor } =
 const {
   exporting,
   exportError,
-  exportProgress,
+  exportProgressLabel,
+  mp4UnavailableReason,
+  exportBlocked,
+  canCancelExport,
+  cancelExport,
   exportFormat,
   exportScale,
   exportBackground,
@@ -441,7 +446,8 @@ function applyLayout(): void {
   applyLayoutToSide("right");
 }
 
-watch(canvasBackgroundColor, () => {
+watch([canvasBackgroundColor, exporting], ([, busy]) => {
+  if (busy) return;
   const bg = getCanvasBackgroundColor();
   players.left?.setBackgroundColor(bg);
   players.right?.setBackgroundColor(bg);
@@ -475,13 +481,6 @@ function sideStepFrame(side: BattleSide, delta: number): void {
 
 const selectedSide = ref<BattleSide>("left");
 const exportable = computed(() => !!sidePet(selectedSide.value));
-
-const exportProgressLabel = computed(() => {
-  const p = exportProgress.value;
-  if (!p) return "";
-  const phase = p.phase === "capture" ? "捕获" : "编码";
-  return `${phase} ${p.done}/${p.total}`;
-});
 
 async function handleExport(): Promise<void> {
   const side = selectedSide.value;
@@ -522,6 +521,7 @@ onMounted(() => {
 /* ---------------- 清理 ---------------- */
 
 onBeforeUnmount(() => {
+  cancelExport();
   cancelAnimationFrame(sceneFrame);
   for (const side of SIDES) {
     mountControllers[side]?.abort();
@@ -761,8 +761,7 @@ onBeforeUnmount(() => {
         <p class="hint">
           导出{{ selectedSide === "left" ? "左" : "右" }}侧当前序列； 画布固定为
           1920×1080 战斗设计帧，所有序列同尺寸同比例，
-          超出画布的内容按客户端行为裁剪；设计帧已达导出上限 1920px， 倍率固定为
-          1×
+          超出画布的内容按客户端行为裁剪；战斗视口导出倍率固定为 1×。
         </p>
         <div class="export-controls">
           <label>
@@ -770,6 +769,9 @@ onBeforeUnmount(() => {
             <select v-model="exportFormat" :disabled="exporting">
               <option value="webp">WebP</option>
               <option value="gif">GIF</option>
+              <option value="mp4" :disabled="!!mp4UnavailableReason">
+                MP4
+              </option>
               <option value="png-sequence">PNG（序列帧）</option>
             </select>
           </label>
@@ -778,7 +780,7 @@ onBeforeUnmount(() => {
             <select
               v-model.number="exportScale"
               disabled
-              title="战斗视口固定 1920×1080，已达导出上限，倍率不可调整"
+              title="战斗视口导出固定为 1920×1080，倍率不可调整"
             >
               <option :value="0.25">0.25×</option>
               <option :value="0.5">0.5×</option>
@@ -787,7 +789,7 @@ onBeforeUnmount(() => {
               <option :value="3">3×</option>
             </select>
           </label>
-          <label class="check">
+          <label v-if="exportFormat !== 'mp4'" class="check">
             <input
               v-model="exportBackground"
               type="checkbox"
@@ -799,10 +801,14 @@ onBeforeUnmount(() => {
         <button
           type="button"
           class="primary export-btn"
-          :disabled="exporting || !exportable"
+          :disabled="exporting || exportBlocked || !exportable"
           @click="handleExport"
         >
           {{ exporting ? exportProgressLabel || "导出中…" : "导出动画" }}
+        </button>
+        <Mp4ExportNotice :reason="mp4UnavailableReason" />
+        <button v-if="canCancelExport" type="button" @click="cancelExport">
+          取消导出
         </button>
         <p v-if="exportError" class="side-error">{{ exportError }}</p>
       </section>

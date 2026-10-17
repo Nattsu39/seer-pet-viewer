@@ -1,8 +1,8 @@
-import type { ExportBackground, ExportFormat } from "./types.js";
+import type { ExportBackground, ImageExportFormat } from "./types.js";
 
 export interface ExportWorkerBeginMessage {
   type: "begin";
-  format: ExportFormat;
+  format: ImageExportFormat;
   width: number;
   height: number;
   fps: number;

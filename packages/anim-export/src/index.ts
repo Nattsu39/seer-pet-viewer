@@ -11,6 +11,8 @@ export {
   buildExportFilename,
 } from "./export.js";
 export { buildPngSequenceFilename, exportPngSequence } from "./png-sequence.js";
+export { checkMp4Support } from "./mp4-support.js";
+export type { Mp4Support } from "./mp4-support.js";
 export { computeExportDimensions } from "./export-size.js";
 export {
   BASE_EXPORT_CANVAS,
@@ -89,6 +91,7 @@ export type {
   CapturedFrame,
   ExportBackground,
   ExportFormat,
+  ImageExportFormat,
   ExportOptions,
   ExportProgress,
   FrameCaptureSource,

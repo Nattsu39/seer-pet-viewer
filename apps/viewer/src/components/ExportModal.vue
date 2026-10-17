@@ -16,11 +16,15 @@ defineProps<{
   exportFormat: ViewerExportFormat;
   exportScale: ExportScale;
   exportBackground: boolean;
+  mp4UnavailableReason: string;
+  canCancelExport: boolean;
+  exportBlocked: boolean;
 }>();
 
 const emit = defineEmits<{
   close: [];
   export: [];
+  "cancel-export": [];
   "update:exportFormat": [value: ViewerExportFormat];
   "update:exportScale": [value: ExportScale];
   "update:exportBackground": [value: boolean];
@@ -37,7 +41,11 @@ const modalStyle = computed(
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="export-modal-backdrop" @click="emit('close')">
+    <div
+      v-if="open"
+      class="export-modal-backdrop"
+      @click="!exporting && emit('close')"
+    >
       <div
         class="export-modal"
         role="dialog"
@@ -75,6 +83,9 @@ const modalStyle = computed(
             >
               <option value="webp">WebP</option>
               <option value="gif">GIF</option>
+              <option value="mp4" :disabled="!!mp4UnavailableReason">
+                MP4
+              </option>
               <option value="png-sequence">PNG（序列帧）</option>
             </select>
           </label>
@@ -99,7 +110,7 @@ const modalStyle = computed(
               <option :value="3">3×</option>
             </select>
           </label>
-          <label class="export-check">
+          <label v-if="exportFormat !== 'mp4'" class="export-check">
             <input
               type="checkbox"
               :checked="exportBackground"
@@ -114,7 +125,8 @@ const modalStyle = computed(
             <span>导出当前背景色</span>
           </label>
           <small
-            >当前格式最长边上限 {{ exportMaxSide }}px，超限将自动裁剪。</small
+            >导出画幅最长边上限
+            {{ exportMaxSide }}px；超出部分会裁剪，精灵倍率不变。</small
           >
           <p v-if="exportNotice" class="export-modal-notice" role="status">
             {{ exportNotice }}
@@ -123,13 +135,17 @@ const modalStyle = computed(
         </div>
 
         <footer class="export-modal-footer">
-          <button type="button" :disabled="exporting" @click="emit('close')">
-            取消
+          <button
+            type="button"
+            :disabled="exporting && !canCancelExport"
+            @click="canCancelExport ? emit('cancel-export') : emit('close')"
+          >
+            {{ canCancelExport ? "取消导出" : "关闭" }}
           </button>
           <button
             type="button"
             class="primary"
-            :disabled="exporting"
+            :disabled="exporting || exportBlocked"
             @click="emit('export')"
           >
             {{ exporting ? exportProgressLabel || "导出中…" : "开始导出" }}

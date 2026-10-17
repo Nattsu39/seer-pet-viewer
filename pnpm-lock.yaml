@@ -83,6 +83,9 @@ importers:
       gifenc:
         specifier: ^1.0.3
         version: 1.0.3
+      mediabunny:
+        specifier: ^1.61.6
+        version: 1.61.6
       wasm-webp:
         specifier: ^0.1.0
         version: 0.1.0
@@ -1623,6 +1626,18 @@ packages:
         integrity: sha512-c9h9dVVMigMPc4bwTvC5dxqtqJZwQPePsWjPlpSOnojbor6pGqdk541lfA7AqFQr5pB1BRdq0juY9db81BwyFw==,
       }
 
+  "@types/dom-mediacapture-transform@0.1.12":
+    resolution:
+      {
+        integrity: sha512-d7/QsLRwF864A5mgIM/YrfiglHoYn7zgCcAoJgW404r+2DwnNr7EBbLnCWpmOMgH8y0te73L1AV6H1bmauaWFw==,
+      }
+
+  "@types/dom-webcodecs@0.1.13":
+    resolution:
+      {
+        integrity: sha512-O5hkiFIcjjszPIYyUSyvScyvrBoV3NOEEZx/pMlsu44TKzWNkLVBBxnxJz42in5n3QIolYOcBYFCPZZ0h8SkwQ==,
+      }
+
   "@types/earcut@3.0.0":
     resolution:
       {
@@ -2232,6 +2247,12 @@ packages:
     resolution:
       {
         integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==,
+      }
+
+  mediabunny@1.61.6:
+    resolution:
+      {
+        integrity: sha512-VHEZ53/7jGl4dQ+uOdndsZufFYwEUFWv9UXgvrGun3OapyzoqI9iaPOD7z3xxY/nAttLZBNwswgJzMtGJAquOQ==,
       }
 
   mime@3.0.0:
@@ -3514,6 +3535,12 @@ snapshots:
 
   "@types/deep-eql@4.0.2": {}
 
+  "@types/dom-mediacapture-transform@0.1.12":
+    dependencies:
+      "@types/dom-webcodecs": 0.1.13
+
+  "@types/dom-webcodecs@0.1.13": {}
+
   "@types/earcut@3.0.0": {}
 
   "@types/estree@1.0.9": {}
@@ -3896,6 +3923,11 @@ snapshots:
   magic-string@0.30.21:
     dependencies:
       "@jridgewell/sourcemap-codec": 1.5.5
+
+  mediabunny@1.61.6:
+    dependencies:
+      "@types/dom-mediacapture-transform": 0.1.12
+      "@types/dom-webcodecs": 0.1.13
 
   mime@3.0.0: {}
 

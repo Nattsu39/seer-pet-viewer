@@ -6,6 +6,7 @@ import {
 } from "./alpha-bounds.js";
 import { TIGHT_CROP_PADDING, type RgbaFrame } from "./export-dimensions.js";
 import type { CapturedFrame } from "./types.js";
+import { abortable, throwIfAborted } from "./abort.js";
 
 /**
  * 固定视口逐帧交付；紧裁剪先扫描边界，再重渲染逐帧交付。
@@ -15,6 +16,7 @@ export async function* streamCapturedFrames(
   frameCount: number,
   renderFrame: (index: number) => RgbaFrame,
   tightCrop: boolean,
+  signal?: AbortSignal,
 ): AsyncGenerator<CapturedFrame> {
   let union: PixelRect | null = null;
   const measureFrame = (index: number) => {
@@ -26,8 +28,9 @@ export async function* streamCapturedFrames(
   };
   if (tightCrop) {
     for (let i = 0; i < frameCount; i++) {
+      throwIfAborted(signal);
       measureFrame(i);
-      await nextFrame();
+      await nextFrame(signal);
     }
   }
 
@@ -46,11 +49,15 @@ export async function* streamCapturedFrames(
     };
   };
   for (let i = 0; i < frameCount; i++) {
+    throwIfAborted(signal);
     yield captureFrame(i);
-    await nextFrame();
+    await nextFrame(signal);
   }
 }
 
-function nextFrame(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+function nextFrame(signal?: AbortSignal): Promise<void> {
+  const frame = new Promise<void>((resolve) =>
+    requestAnimationFrame(() => resolve()),
+  );
+  return signal ? abortable(frame, signal) : frame;
 }

@@ -498,6 +498,7 @@ export class SwfPlayer {
   }
 
   setBackgroundColor(color: number): void {
+    if (this.captureClock) return;
     if (!this.renderer) return;
     // 透明画布不接受背景色：v8 的 background.color setter 会把 alpha 重置为 1，
     // 且非零 RGB 配零 alpha 会破坏 (0,0,0,0) 的合法预乘清屏
@@ -506,6 +507,7 @@ export class SwfPlayer {
   }
 
   setSequence(name: string): void {
+    if (this.captureClock) return;
     this.selectSequence(name);
   }
 
@@ -673,7 +675,7 @@ export class SwfPlayer {
     try {
       this.pause();
       if (this.sequence?.name !== options.sequence) {
-        this.setSequence(options.sequence);
+        this.selectSequence(options.sequence);
       }
 
       const renderFxLayers = options.renderFxLayers ?? true;
@@ -777,31 +779,37 @@ export class SwfPlayer {
           seq.frames.length,
           renderFrame,
           !battleLayout && !keepViewport,
+          options.signal,
         );
       } finally {
         exportRT.destroy(true);
       }
     } finally {
-      this.renderer.background.color = savedBgColor;
-      this.renderer.background.alpha = savedBgAlpha;
-      if (savedSequence && savedSequence !== this.sequence?.name) {
-        this.setSequence(savedSequence);
+      try {
+        if (!this.destroyed) {
+          this.renderer.background.color = savedBgColor;
+          this.renderer.background.alpha = savedBgAlpha;
+          if (savedSequence && savedSequence !== this.sequence?.name) {
+            this.selectSequence(savedSequence);
+          }
+          this.frameIndex = savedFrame;
+          this.renderCurrentFrame();
+          this.userZoom = savedUserZoom;
+          this.root.position.set(savedRootPos.x, savedRootPos.y);
+          this.root.scale.set(savedRootScale.x, savedRootScale.y);
+          if (this.mountMode === "fixed") {
+            if (!this.manual && !this.destroyed) this.app?.render();
+          } else {
+            this.applyTransform(false);
+          }
+          if (wasPlaying) this.play();
+        }
+      } finally {
+        this.clock = playbackClock;
+        this.captureClock = null;
+        this.playing = !this.destroyed && playbackClock.playing;
+        if (!this.destroyed) this.sampleClock();
       }
-      this.frameIndex = savedFrame;
-      this.renderCurrentFrame();
-      this.userZoom = savedUserZoom;
-      this.root.position.set(savedRootPos.x, savedRootPos.y);
-      this.root.scale.set(savedRootScale.x, savedRootScale.y);
-      if (this.mountMode === "fixed") {
-        if (!this.manual && !this.destroyed) this.app?.render();
-      } else {
-        this.applyTransform(false);
-      }
-      if (wasPlaying) this.play();
-      this.clock = playbackClock;
-      this.captureClock = null;
-      this.playing = playbackClock.playing;
-      this.sampleClock();
     }
   }
 
@@ -843,6 +851,7 @@ export class SwfPlayer {
   }
 
   fitToView(): void {
+    if (this.captureClock) return;
     if (this.destroyed || this.mountMode === "fixed" || !this.app) return;
     this.userZoom = 1;
     const pad = 40;
@@ -879,6 +888,7 @@ export class SwfPlayer {
   }
 
   setViewportPosition(x: number, y: number): void {
+    if (this.captureClock) return;
     if (!this.app || !Number.isFinite(x) || !Number.isFinite(y)) return;
     const scale = this.fitScale * this.userZoom || 1;
     this.root.position.set(
@@ -909,6 +919,7 @@ export class SwfPlayer {
   }
 
   setZoom(zoom: number): void {
+    if (this.captureClock) return;
     const viewport = this.getViewportPosition();
     this.userZoom = Math.max(0.1, Math.min(zoom, 16));
     this.applyTransform(false);
@@ -929,7 +940,7 @@ export class SwfPlayer {
     let initialZoom = 1;
 
     canvas.addEventListener("pointerdown", (e: PointerEvent) => {
-      if (pinching) return; // Disable drag during pinch
+      if (this.captureClock || pinching) return;
       dragging = true;
       lastX = e.clientX;
       lastY = e.clientY;
@@ -938,7 +949,7 @@ export class SwfPlayer {
       dragging = false;
     });
     canvas.addEventListener("pointermove", (e: PointerEvent) => {
-      if (!dragging || pinching) return;
+      if (this.captureClock || !dragging || pinching) return;
       this.root.x += e.clientX - lastX;
       this.root.y += e.clientY - lastY;
       lastX = e.clientX;

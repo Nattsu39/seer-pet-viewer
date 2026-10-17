@@ -7,6 +7,7 @@ export {
   validateCanvasSize,
 } from "./canvas-size.js";
 export { streamCapturedFrames } from "./frame-stream.js";
+export { throwIfAborted, yieldCaptureTask } from "./abort.js";
 export { unpremultiplyPixels } from "./pixels.js";
 export {
   computeTightExportSize,

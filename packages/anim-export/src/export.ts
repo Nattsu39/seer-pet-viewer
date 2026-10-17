@@ -10,9 +10,12 @@ import type {
   ExportOptions,
   ExportProgress,
   FrameCaptureSource,
+  ImageExportFormat,
 } from "./types.js";
 
-const FORMAT_LABEL: Record<ExportOptions["format"], string> = {
+type ImageExportOptions = ExportOptions & { format: ImageExportFormat };
+
+const FORMAT_LABEL: Record<ImageExportFormat, string> = {
   gif: "GIF",
   webp: "WebP",
 };
@@ -66,6 +69,30 @@ export async function exportAnimation(
   options: ExportOptions,
   onProgress?: (progress: ExportProgress) => void,
 ): Promise<Blob> {
+  options = {
+    ...options,
+    battle: options.battle ? { ...options.battle } : undefined,
+    viewport: options.viewport ? { ...options.viewport } : undefined,
+  };
+  if (options.format === "mp4") {
+    return (await import("./mp4-export.js")).exportMp4(
+      source,
+      options,
+      onProgress,
+    );
+  }
+  return exportImageAnimation(
+    source,
+    { ...options, format: options.format },
+    onProgress,
+  );
+}
+
+async function exportImageAnimation(
+  source: FrameCaptureSource,
+  options: ImageExportOptions,
+  onProgress?: (progress: ExportProgress) => void,
+): Promise<Blob> {
   options = { ...options, maxSide: MAX_ANIMATION_FRAME_SIDE };
   const frameCount = source.getSequenceFrameCount(options.sequence);
   if (frameCount <= 0) {
@@ -96,7 +123,7 @@ export async function exportAnimation(
 async function exportViaWorker(
   client: ExportWorkerClient,
   source: FrameCaptureSource,
-  options: ExportOptions,
+  options: ImageExportOptions,
   fps: number,
   onProgress?: (progress: ExportProgress) => void,
   label = "导出",
@@ -143,7 +170,7 @@ async function exportViaWorker(
 /** 无 worker 环境的回退路径：直接复用捕获 buffer（不复制），编码逐帧释放 */
 async function exportInline(
   source: FrameCaptureSource,
-  options: ExportOptions,
+  options: ImageExportOptions,
   fps: number,
   onProgress?: (progress: ExportProgress) => void,
   label = "导出",

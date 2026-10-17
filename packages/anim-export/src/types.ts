@@ -1,6 +1,7 @@
 import type { BattleViewportOptions } from "./battle-viewport.js";
 
-export type ExportFormat = "gif" | "webp";
+export type ImageExportFormat = "gif" | "webp";
+export type ExportFormat = ImageExportFormat | "mp4";
 
 export type ExportBackground = number | "transparent";
 
@@ -28,6 +29,7 @@ export interface CaptureOptions {
   /** 编码入口按格式传入；捕获源应在创建画布前裁剪，保留内容倍率。 */
   maxSide?: number;
   onViewportCrop?: (crop: ExportViewportCrop) => void;
+  signal?: AbortSignal;
 }
 
 export interface CapturedFrame {
@@ -39,6 +41,7 @@ export interface CapturedFrame {
 
 export interface ExportOptions extends CaptureOptions {
   format: ExportFormat;
+  /** GIF/WebP only; MP4 always uses the source's original frame rate. */
   fps?: number;
 }
 
@@ -47,7 +50,7 @@ export interface PngSequenceOptions extends CaptureOptions {
 }
 
 export interface ExportProgress {
-  phase: "capture" | "encode";
+  phase: "prepare" | "capture" | "encode" | "mux" | "complete";
   done: number;
   total: number;
 }

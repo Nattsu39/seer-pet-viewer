@@ -1,6 +1,6 @@
 {
   "name": "@seer-pet-anim/anim-export",
-  "description": "将捕获的动画帧导出为 GIF / WebP / PNG 序列,含参考缩放、紧裁剪与战斗视口规划",
+  "description": "将捕获的动画帧导出为 GIF / WebP / PNG 序列 / MP4,含参考缩放、紧裁剪与战斗视口规划",
   "version": "0.3.2",
   "type": "module",
   "license": "MIT",
@@ -17,6 +17,7 @@
     "gif",
     "webp",
     "png-sequence",
+    "mp4",
     "animation-export",
     "canvas"
   ],
@@ -60,6 +61,7 @@
     "@seer-pet-anim/battle-layout": "workspace:*",
     "fflate": "^0.8.3",
     "gifenc": "^1.0.3",
+    "mediabunny": "^1.61.6",
     "wasm-webp": "^0.1.0"
   },
   "devDependencies": {

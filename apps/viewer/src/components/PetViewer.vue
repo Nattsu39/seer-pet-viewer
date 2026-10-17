@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Mp4ExportNotice from "./Mp4ExportNotice.vue";
 import {
   ref,
   reactive,
@@ -60,7 +61,11 @@ const {
   exportError,
   exportNotice,
   exportMaxSide,
-  exportProgress,
+  exportProgressLabel,
+  mp4UnavailableReason,
+  exportBlocked,
+  canCancelExport,
+  cancelExport,
   exportFormat,
   exportScale,
   exportBackground,
@@ -286,8 +291,8 @@ watch(
   { flush: "post", immediate: true },
 );
 
-watch(canvasBackgroundColor, () => {
-  syncPlayerBackground();
+watch([canvasBackgroundColor, exporting], ([, busy]) => {
+  if (!busy) syncPlayerBackground();
 });
 
 watch(currentSequence, (name) => {
@@ -335,10 +340,12 @@ function onSeek(e: Event) {
 }
 
 function fitView() {
+  if (exporting.value) return;
   activePlayer()?.fitToView();
 }
 
 function applyViewportState() {
+  if (exporting.value) return;
   const x = Number(viewportX.value);
   const y = Number(viewportY.value);
   const zoom = Number(viewportZoom.value);
@@ -384,7 +391,7 @@ function scheduleFitView() {
   cancelAnimationFrame(fitViewFrame);
   fitViewFrame = requestAnimationFrame(() => {
     fitViewFrame = requestAnimationFrame(() => {
-      activePlayer()?.fitToView();
+      if (!exporting.value) activePlayer()?.fitToView();
     });
   });
 }
@@ -451,14 +458,8 @@ function openMobileExport() {
   openExportModal();
 }
 
-const exportProgressLabel = computed(() => {
-  const p = exportProgress.value;
-  if (!p) return "";
-  const phase = p.phase === "capture" ? "捕获" : "编码";
-  return `${phase} ${p.done}/${p.total}`;
-});
-
 onBeforeUnmount(() => {
+  cancelExport();
   teardownViewer();
 });
 
@@ -530,6 +531,7 @@ defineExpose({ fitView });
                 v-for="seq in sequenceOptions"
                 :key="seq.value"
                 :class="{ active: currentSequence === seq.value }"
+                :disabled="exporting"
                 @click="currentSequence = seq.value"
               >
                 {{ seq.label }}
@@ -581,6 +583,7 @@ defineExpose({ fitView });
             <label>速度 {{ speed.toFixed(2) }}×</label>
             <input
               v-model.number="speed"
+              :disabled="exporting"
               type="range"
               min="0.25"
               max="2"
@@ -592,12 +595,15 @@ defineExpose({ fitView });
         <div class="controls-row controls-tertiary">
           <section class="control-group canvas-tools" aria-label="画布工具">
             <span class="group-title">画布</span>
-            <button class="fit-btn" @click="fitView">适应窗口</button>
+            <button class="fit-btn" :disabled="exporting" @click="fitView">
+              适应窗口
+            </button>
             <div class="background-control">
               <label>
                 <span>背景色</span>
                 <input
                   v-model="canvasBackgroundColor"
+                  :disabled="exporting"
                   type="color"
                   aria-label="选择画布背景色"
                   :title="canvasBackgroundColor"
@@ -610,6 +616,7 @@ defineExpose({ fitView });
                 class="compact-btn"
                 title="恢复当前主题的默认背景色"
                 @click="resetCanvasBackgroundColor"
+                :disabled="exporting"
               >
                 重置
               </button>
@@ -663,7 +670,7 @@ defineExpose({ fitView });
             v-if="!isMobile"
             class="export-group control-group"
             aria-label="导出设置"
-            :title="`当前格式最长边上限 ${exportMaxSide}px，超限将自动裁剪。`"
+            :title="`导出画幅最长边上限 ${exportMaxSide}px；超出部分会裁剪，精灵倍率不变。`"
           >
             <span class="group-title">导出</span>
             <label class="export-field">
@@ -675,9 +682,16 @@ defineExpose({ fitView });
               >
                 <option value="webp">WebP</option>
                 <option value="gif">GIF</option>
+                <option value="mp4" :disabled="!!mp4UnavailableReason">
+                  MP4
+                </option>
                 <option value="png-sequence">PNG（序列帧）</option>
               </select>
             </label>
+            <Mp4ExportNotice :reason="mp4UnavailableReason" />
+            <button v-if="canCancelExport" type="button" @click="cancelExport">
+              取消导出
+            </button>
             <label class="export-field">
               <span>缩放</span>
               <select
@@ -692,7 +706,10 @@ defineExpose({ fitView });
                 <option :value="3">3×</option>
               </select>
             </label>
-            <label class="export-background-check check">
+            <label
+              v-if="exportFormat !== 'mp4'"
+              class="export-background-check check"
+            >
               <input
                 v-model="exportBackground"
                 type="checkbox"
@@ -702,13 +719,14 @@ defineExpose({ fitView });
             </label>
             <button
               class="export-btn primary"
-              :disabled="exporting"
+              :disabled="exporting || exportBlocked"
               @click="handleExport"
             >
               {{ exporting ? exportProgressLabel || "导出中…" : "导出动画" }}
             </button>
             <small
-              >当前格式最长边上限 {{ exportMaxSide }}px，超限将自动裁剪。</small
+              >导出画幅最长边上限
+              {{ exportMaxSide }}px；超出部分会裁剪，精灵倍率不变。</small
             >
           </section>
         </div>
@@ -732,6 +750,10 @@ defineExpose({ fitView });
       :export-format="exportFormat"
       :export-scale="exportScale"
       :export-background="exportBackground"
+      :mp4-unavailable-reason="mp4UnavailableReason"
+      :can-cancel-export="canCancelExport"
+      :export-blocked="exportBlocked"
+      @cancel-export="cancelExport"
       @close="closeExportModal()"
       @export="handleExport"
       @update:export-format="exportFormat = $event"
