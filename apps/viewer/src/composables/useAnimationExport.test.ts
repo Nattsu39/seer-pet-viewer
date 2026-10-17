@@ -21,6 +21,34 @@ const source = {
   getSequenceFrameCount: () => 1,
   getExportFps: () => 24,
 };
+
+it.each(["webp", "gif", "png-sequence", "mp4"] as const)(
+  "uses the supplied battle background for %s without changing the viewport",
+  async (format) => {
+    const state = useAnimationExport();
+    state.exportFormat.value = format;
+    const battle = {
+      side: "left" as const,
+      pxPerUnit: 100,
+      containerWorldY: 0,
+    };
+    const encoder = format === "png-sequence" ? mocks.png : mocks.animation;
+
+    state.exportBackground.value = true;
+    await state.runExport(source, 70, "attack", 0x123456, battle);
+    expect(encoder.mock.calls.at(-1)?.[1]).toMatchObject({
+      background: 0x123456,
+      battle,
+    });
+
+    state.exportBackground.value = false;
+    await state.runExport(source, 70, "attack", 0x123456, battle);
+    expect(encoder.mock.calls.at(-1)?.[1]).toMatchObject({
+      background: format === "mp4" ? 0x123456 : "transparent",
+      battle,
+    });
+  },
+);
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.support.mockResolvedValue({ supported: true, reason: "" });

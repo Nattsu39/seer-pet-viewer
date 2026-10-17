@@ -207,6 +207,72 @@ test("standalone manual drawing and frame capture share grab semantics", async (
   }
 });
 
+test("battle capture honors export backgrounds and preserves transparent preview", async () => {
+  const host = document.createElement("div");
+  host.style.cssText = "width:32px;height:32px";
+  document.body.append(host);
+  const clip = await createClip([
+    { material: {}, quads: [{ rect: [0, 0, 1, 1] }] },
+  ]);
+  const player = new SwfPlayer();
+  try {
+    await player.mount(host, clip, {
+      clock: "manual",
+      mode: "fixed",
+      transparent: true,
+    });
+    player.setSequence("standby");
+    player.setFixedTransform({ x: 8, y: 8 }, { x: 1, y: 1 });
+    for (const background of [
+      "transparent",
+      0x2468ac,
+      0,
+      "transparent",
+    ] as const) {
+      const expected =
+        background === "transparent"
+          ? [0, 0, 0, 0]
+          : [
+              (background >> 16) & 255,
+              (background >> 8) & 255,
+              background & 255,
+              255,
+            ];
+      let frames = 0;
+      for await (const frame of player.captureFrames({
+        sequence: "standby",
+        scale: 1,
+        background,
+        battle: { side: "left", kind: "swf" },
+      })) {
+        assert(
+          frame.width === 1920 && frame.height === 1080,
+          "battle size changed",
+        );
+        const actual = frame.pixels.subarray(0, 4);
+        assert(
+          actual.every((value, i) => Math.abs(value - expected[i]!) <= 1),
+          `battle background ${background}: ${actual}; expected ${expected}`,
+        );
+        frames++;
+      }
+      assert(frames === 1, "expected one captured frame");
+      player.draw();
+      const gl = player.getCanvas().getContext("webgl2")!;
+      const preview = new Uint8Array(4);
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, preview);
+      assert(
+        preview.every((value) => value === 0),
+        `preview after ${background}: ${preview}`,
+      );
+    }
+  } finally {
+    player.destroy();
+    clip.atlas.close();
+    host.remove();
+  }
+});
+
 for (const alpha of [0.25, 0.5, 0.75, 1]) {
   test(`transparent capture preserves PNG colors at alpha ${alpha}`, async () => {
     const host = document.createElement("div");

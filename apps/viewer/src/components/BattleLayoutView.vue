@@ -23,10 +23,8 @@ import { getAnimationLabel } from "../lib/animation-labels";
 import type { PetClip } from "../composables/usePetLoader";
 import { usePetLoader } from "../composables/usePetLoader";
 import { useAnimationExport } from "../composables/useAnimationExport";
-import {
-  getCanvasBackgroundColor,
-  useViewerSettings,
-} from "../composables/useViewerSettings";
+import { useBattleExportBackground } from "../composables/useBattleExportBackground";
+import { useViewerSettings } from "../composables/useViewerSettings";
 import type { PetAnimIndex, PetAnimIndexEntry } from "../lib/pet-anim-index";
 import {
   BATTLE_DESIGN_HEIGHT,
@@ -58,6 +56,21 @@ const {
   exportBackground,
   runExport,
 } = useAnimationExport();
+
+const {
+  backgroundMode,
+  backgroundColor,
+  backgroundColorNumber,
+  resetBackground,
+} = useBattleExportBackground(exportFormat);
+const previewBackgroundColor = computed(() =>
+  backgroundMode.value === "solid"
+    ? backgroundColor.value
+    : canvasBackgroundColor.value,
+);
+const previewBackgroundColorNumber = computed(() =>
+  Number.parseInt(previewBackgroundColor.value.slice(1), 16),
+);
 
 /* ---------------- 场景几何（设计稿容器缩放 + 场景级 pan/zoom） ---------------- */
 
@@ -370,7 +383,7 @@ async function mountSidePlayer(side: BattleSide): Promise<void> {
       const p = new SwfPlayer();
       p.setOnFrameChange(onFrame);
       await p.mount(host, pet.clip, {
-        backgroundColor: getCanvasBackgroundColor(),
+        backgroundColor: previewBackgroundColorNumber.value,
         maxTextureSize: getEffectiveSwfMaxTextureSize(),
         releaseAtlasAfterSplit: pet.bundleBuffer != null,
         releaseAtlasAfterUpload: pet.bundleBuffer != null,
@@ -385,7 +398,7 @@ async function mountSidePlayer(side: BattleSide): Promise<void> {
       const p = new SpinePlayer();
       p.setOnFrameChange(onFrame);
       await p.mount(host, pet.clip, {
-        backgroundColor: getCanvasBackgroundColor(),
+        backgroundColor: previewBackgroundColorNumber.value,
         clock: "manual",
         signal: controller.signal,
         mode: "fixed",
@@ -446,9 +459,8 @@ function applyLayout(): void {
   applyLayoutToSide("right");
 }
 
-watch([canvasBackgroundColor, exporting], ([, busy]) => {
+watch([previewBackgroundColorNumber, exporting], ([bg, busy]) => {
   if (busy) return;
-  const bg = getCanvasBackgroundColor();
   players.left?.setBackgroundColor(bg);
   players.right?.setBackgroundColor(bg);
 });
@@ -487,11 +499,12 @@ async function handleExport(): Promise<void> {
   const pet = sidePet(side);
   const player = players[side];
   if (!pet || !player) return;
+  exportBackground.value = backgroundMode.value === "solid";
   await runExport(
     player,
     pet.clip.petId,
     state(side).view.sequence,
-    getCanvasBackgroundColor(),
+    backgroundColorNumber.value,
     {
       side,
       pxPerUnit: pxPerUnit.value,
@@ -546,6 +559,7 @@ onBeforeUnmount(() => {
     <div
       ref="sceneHost"
       class="battle-scene"
+      :style="{ backgroundColor: previewBackgroundColor }"
       @pointerdown="onScenePointerDown"
       @pointermove="onScenePointerMove"
       @pointerup="onScenePointerUp"
@@ -632,7 +646,7 @@ onBeforeUnmount(() => {
             </button>
           </template>
         </div>
-        <p class="hint">截图将拉伸铺满 16:9 设计稿，用于肉眼比对宠物位置</p>
+        <p class="hint">截图将拉伸铺满 16:9 设计稿，仅供校准，不参与导出。</p>
       </section>
 
       <section
@@ -789,15 +803,41 @@ onBeforeUnmount(() => {
               <option :value="3">3×</option>
             </select>
           </label>
-          <label v-if="exportFormat !== 'mp4'" class="check">
+        </div>
+        <div class="export-controls background-controls">
+          <label>
+            <span>导出背景</span>
+            <select
+              v-model="backgroundMode"
+              :disabled="exporting || exportFormat === 'mp4'"
+            >
+              <option value="transparent">透明</option>
+              <option value="solid">纯色</option>
+            </select>
+          </label>
+          <label>
+            <span>背景色</span>
             <input
-              v-model="exportBackground"
-              type="checkbox"
+              v-model="backgroundColor"
+              type="color"
+              aria-label="选择战斗导出背景色"
+              :title="backgroundColor"
               :disabled="exporting"
             />
-            <span>背景色</span>
           </label>
+          <code>{{ backgroundColor }}</code>
+          <button
+            type="button"
+            class="compact-btn"
+            :disabled="exporting"
+            @click="resetBackground"
+          >
+            重置背景
+          </button>
         </div>
+        <p v-if="exportFormat === 'mp4'" class="hint" role="status">
+          MP4 固定使用纯色背景；切回其他格式后恢复原背景模式。
+        </p>
         <button
           type="button"
           class="primary export-btn"
@@ -1123,10 +1163,20 @@ onBeforeUnmount(() => {
   color: var(--text);
 }
 
-.export-controls .check {
-  flex-direction: row;
-  align-items: center;
-  min-height: 34px;
+.background-controls input[type="color"] {
+  width: 40px;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  cursor: pointer;
+}
+
+.background-controls code {
+  line-height: 32px;
+  font-size: 0.78rem;
+  color: var(--muted);
 }
 
 .export-btn {

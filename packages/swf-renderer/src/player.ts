@@ -666,7 +666,8 @@ export class SwfPlayer {
     const savedUserZoom = this.userZoom;
     const savedRootPos = { x: this.root.position.x, y: this.root.position.y };
     const savedRootScale = { x: this.root.scale.x, y: this.root.scale.y };
-    const savedBgColor = this.renderer.background.color;
+    // Pixi's Color is mutable; preserve its value before changing export settings.
+    const savedBgColor = this.renderer.background.color.toNumber();
     const savedBgAlpha = this.renderer.background.alpha;
 
     const playbackClock = this.clock;
@@ -728,8 +729,8 @@ export class SwfPlayer {
         resolution: 1,
       });
       if (transparent) {
-        this.renderer.background.alpha = 0;
         this.renderer.background.color = 0;
+        this.renderer.background.alpha = 0;
       } else {
         this.renderer.background.alpha = 1;
         this.renderer.background.color = options.background;
@@ -756,6 +757,10 @@ export class SwfPlayer {
             container: this.app.stage,
             target: exportRT,
             clear: true,
+            // Offscreen targets do not inherit the renderer's background color.
+            clearColor: transparent
+              ? [0, 0, 0, 0]
+              : this.renderer.background.colorRgba,
           });
           return {
             pixels: readRenderTexturePixels(
