@@ -9,6 +9,7 @@ import {
   watch,
 } from "vue";
 import PetPicker from "./PetPicker.vue";
+import PetLoadNotice from "./PetLoadNotice.vue";
 import { SwfPlayer } from "@seer-pet-anim/swf-renderer";
 import { SpinePlayer } from "@seer-pet-anim/spine-renderer";
 import { ensureSwfClipAtlas } from "@seer-pet-anim/swf-bundle";
@@ -246,6 +247,7 @@ function createSideState(side: BattleSide) {
     [() => loader.pet.value, () => view.host],
     ([pet, host]) => {
       if (pet && host) void mountSidePlayer(side);
+      else if (!pet) unmountSidePlayer(side);
     },
     { flush: "post" },
   );
@@ -291,8 +293,13 @@ function sideLoading(side: BattleSide): boolean {
   return state(side).loader.loading.value;
 }
 
-function sideError(side: BattleSide): string | null {
-  return state(side).view.mountError ?? state(side).loader.error.value;
+function onSideBundleInput(side: BattleSide, event: Event): void {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file || exporting.value) return;
+  selectedSide.value = side;
+  void state(side).loader.loadBundleFile(file);
 }
 
 function onSideSelect(
@@ -303,10 +310,10 @@ function onSideSelect(
   void state(side).loader.loadBundleFromRemote(entry, index.sharedBundles);
 }
 
-function clearSide(side: BattleSide): void {
-  // 与 onBeforeUnmount 相同的清理：销毁画布并释放 clip，避免残留冻结帧
+function unmountSidePlayer(side: BattleSide): void {
   mountControllers[side]?.abort();
   state(side).view.mounting = false;
+  state(side).view.mountError = null;
   mountTokens[side]++;
   players[side]?.destroy();
   players[side] = null;
@@ -314,6 +321,10 @@ function clearSide(side: BattleSide): void {
     disposePetClip(activeClips[side]!);
     activeClips[side] = null;
   }
+}
+
+function clearSide(side: BattleSide): void {
+  unmountSidePlayer(side);
   state(side).loader.reset();
 }
 
@@ -494,6 +505,21 @@ function sideStepFrame(side: BattleSide, delta: number): void {
 const selectedSide = ref<BattleSide>("left");
 const exportable = computed(() => !!sidePet(selectedSide.value));
 
+// The header imports into the side selected in the battle panel.
+function getImportLoader(): ReturnType<typeof usePetLoader> | null {
+  return exporting.value ? null : state(selectedSide.value).loader;
+}
+
+function resetSelectedSide(): void {
+  if (!exporting.value) clearSide(selectedSide.value);
+}
+
+defineExpose({
+  getImportLoader,
+  resetSelectedSide,
+  hasSelectedPet: exportable,
+});
+
 async function handleExport(): Promise<void> {
   const side = selectedSide.value;
   const pet = sidePet(side);
@@ -537,16 +563,7 @@ onBeforeUnmount(() => {
   cancelExport();
   cancelAnimationFrame(sceneFrame);
   for (const side of SIDES) {
-    mountControllers[side]?.abort();
-    state(side).view.mounting = false;
-    mountTokens[side]++;
-    players[side]?.destroy();
-    players[side] = null;
-    if (activeClips[side]) {
-      disposePetClip(activeClips[side]!);
-      activeClips[side] = null;
-    }
-    state(side).loader.reset();
+    clearSide(side);
   }
   sceneResizeObserver?.disconnect();
   sceneResizeObserver = null;
@@ -596,6 +613,11 @@ onBeforeUnmount(() => {
     </div>
 
     <aside class="battle-panel">
+      <p class="hint">
+        顶部菜单将资源导入当前选中的{{
+          selectedSide === "left" ? "左" : "右"
+        }}侧。
+      </p>
       <section class="panel-group" aria-label="布局微调">
         <span class="group-title">布局微调</span>
         <div class="tuning-fields">
@@ -660,11 +682,17 @@ onBeforeUnmount(() => {
           {{ side === "left" ? "左侧（我方）" : "右侧（敌方镜像）" }}
         </span>
 
+        <label class="side-bundle-import">
+          <span>导入 Bundle 到{{ side === "left" ? "左" : "右" }}侧</span>
+          <input
+            type="file"
+            :disabled="sideLoading(side) || exporting"
+            @change="onSideBundleInput(side, $event)"
+          />
+        </label>
+        <PetLoadNotice :loader="state(side).loader" />
+
         <template v-if="!sidePet(side)">
-          <p v-if="sideLoading(side)" class="hint">正在加载…</p>
-          <p v-else-if="sideError(side)" class="side-error">
-            {{ sideError(side) }}
-          </p>
           <PetPicker
             class="side-picker"
             :loading="sideLoading(side)"
@@ -1051,6 +1079,21 @@ onBeforeUnmount(() => {
 .side-panel.selected {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent-soft) 35%, transparent);
+}
+
+.side-bundle-import {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.side-bundle-import input {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  color: var(--text);
 }
 
 .side-picker {

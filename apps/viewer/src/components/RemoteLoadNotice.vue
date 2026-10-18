@@ -202,11 +202,13 @@ const officialSavedFilename = computed(() => {
 <style scoped>
 .remote-notice {
   width: 100%;
+  min-width: 0;
   max-width: 560px;
   margin-bottom: 12px;
   padding: 12px 14px;
   border-radius: 10px;
   font-size: 0.88rem;
+  overflow-wrap: anywhere;
 }
 
 .remote-notice-loading {
@@ -335,6 +337,8 @@ const officialSavedFilename = computed(() => {
 
 .remote-notice-actions button {
   min-height: 36px;
+  max-width: 100%;
+  white-space: normal;
 }
 
 .remote-download-link {

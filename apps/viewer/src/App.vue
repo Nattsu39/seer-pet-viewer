@@ -2,20 +2,14 @@
 import { defineAsyncComponent, onMounted, ref } from "vue";
 import AppHeader from "./components/AppHeader.vue";
 import PetPicker from "./components/PetPicker.vue";
-import RemoteLoadNotice from "./components/RemoteLoadNotice.vue";
+import PetLoadNotice from "./components/PetLoadNotice.vue";
 import { usePetLoader } from "./composables/usePetLoader";
 import { usePetAnimIndex } from "./composables/usePetAnimIndex";
 import { useViewerSettings } from "./composables/useViewerSettings";
 import { findPetIndexEntry, parsePetDeepLink } from "./lib/pet-deep-link";
 import { isViewerWarningLink } from "./lib/viewer-warning";
 import type { PetAnimIndex, PetAnimIndexEntry } from "./lib/pet-anim-index";
-import {
-  isRemoteBundleEnabled,
-  canNamedRemoteBundleDownload,
-  githubBundleRawDownloadUrl,
-  newseerBundleDownloadUrl,
-  remoteBundleDownloadFilename,
-} from "./lib/remote-bundle";
+import { isRemoteBundleEnabled } from "./lib/remote-bundle";
 
 const PetViewer = defineAsyncComponent(
   () => import("./components/PetViewer.vue"),
@@ -25,6 +19,7 @@ const BattleLayoutView = defineAsyncComponent(
 );
 
 const viewMode = ref<"single" | "battle">("single");
+const battleView = ref<InstanceType<typeof BattleLayoutView> | null>(null);
 
 const {
   effectiveToolbarPosition,
@@ -36,33 +31,22 @@ const {
 
 const { ensureIndexLoaded } = usePetAnimIndex();
 
+const singleLoader = usePetLoader({
+  autoImportSharedMaterials: () => autoImportSharedMaterials.value,
+});
 const {
   loading,
   error,
   loadingMessage,
-  downloadProgress,
-  downloadingBundle,
-  cdnFileTooLarge,
-  remoteLoadContext,
   pet,
   parseMs,
   warnings,
   warningsVisible,
   materialCount,
   sharedMaterialBundleName,
-  loadBundleFile,
   loadBundleFromRemote,
-  retryRemoteLoad,
-  dismissError,
   dismissWarnings,
-  downloadNamedRemoteBundle,
-  loadSwfClipDir,
-  loadSpineClipDir,
-  loadMaterialBundle,
-  reset,
-} = usePetLoader({
-  autoImportSharedMaterials: () => autoImportSharedMaterials.value,
-});
+} = singleLoader;
 
 const dragOver = ref(false);
 const fps = ref(0);
@@ -105,21 +89,34 @@ function onDrop(e: DragEvent) {
 }
 
 async function handleFiles(files: FileList) {
+  const loader = getImportLoader();
+  if (!loader) return;
   const arr = Array.from(files);
   const meta = arr.find((f) => f.name === "meta.json");
   if (meta) {
     const metaJson = JSON.parse(await meta.text()) as { kind?: string };
     if (metaJson.kind === "spine") {
-      await loadSpineClipDir(arr);
+      await loader.loadSpineClipDir(arr);
       return;
     }
     if (arr.some((f) => f.name === "atlas.png")) {
-      await loadSwfClipDir(arr);
+      await loader.loadSwfClipDir(arr);
       return;
     }
   }
   const bundle = arr.find((f) => !f.name.endsWith(".json"));
-  if (bundle) await loadBundleFile(bundle);
+  if (bundle) await loader.loadBundleFile(bundle);
+}
+
+function getImportLoader() {
+  return viewMode.value === "battle"
+    ? battleView.value?.getImportLoader()
+    : singleLoader;
+}
+
+function onReset() {
+  if (viewMode.value === "battle") battleView.value?.resetSelectedSide();
+  else singleLoader.reset();
 }
 
 function onFileInput(e: Event) {
@@ -130,57 +127,27 @@ function onFileInput(e: Event) {
 
 function onSpineClipInput(e: Event) {
   const input = e.target as HTMLInputElement;
-  if (input.files?.length) void loadSpineClipDir(input.files);
+  if (input.files?.length)
+    void getImportLoader()?.loadSpineClipDir(input.files);
   input.value = "";
 }
 
 function onMaterialInput(e: Event) {
   const input = e.target as HTMLInputElement;
   const file = input.files?.[0];
-  if (file) void loadMaterialBundle(file);
+  if (file) void getImportLoader()?.loadMaterialBundle(file);
   input.value = "";
 }
 
 function onRemoteSelect(entry: PetAnimIndexEntry, index: PetAnimIndex) {
   void loadBundleFromRemote(entry, index.sharedBundles);
 }
-
-function remoteFailureDownloadUrl(): string | null {
-  const entry = remoteLoadContext.value?.entry;
-  if (!entry) return null;
-  try {
-    return newseerBundleDownloadUrl(entry);
-  } catch {
-    return null;
-  }
-}
-
-function remoteFailureDownloadFilename(): string | null {
-  const entry = remoteLoadContext.value?.entry;
-  if (!entry) return null;
-  return remoteBundleDownloadFilename(entry);
-}
-
-/** CDN 因文件超限（403）时，改为提供 GitHub raw 直链供直接下载 */
-function remoteFailureGithubDownloadUrl(): string | null {
-  if (!cdnFileTooLarge.value) return null;
-  const entry = remoteLoadContext.value?.entry;
-  if (!entry) return null;
-  return githubBundleRawDownloadUrl(entry);
-}
-
-function canNamedRemoteFailureDownload(): boolean {
-  if (cdnFileTooLarge.value) return false;
-  const entry = remoteLoadContext.value?.entry;
-  if (!entry) return false;
-  return canNamedRemoteBundleDownload(entry);
-}
 </script>
 
 <template>
   <div class="app">
     <AppHeader
-      :pet-loaded="!!pet"
+      :pet-loaded="viewMode === 'battle' ? !!battleView?.hasSelectedPet : !!pet"
       :shared-material-bundle-name="sharedMaterialBundleName"
       :toolbar-toggle-disabled="viewMode === 'battle'"
       @cycle-theme="cycleTheme"
@@ -188,7 +155,7 @@ function canNamedRemoteFailureDownload(): boolean {
       @file-input="onFileInput"
       @spine-clip-input="onSpineClipInput"
       @material-input="onMaterialInput"
-      @reset="reset"
+      @reset="onReset"
     />
 
     <div class="mode-switch" role="tablist" aria-label="查看模式">
@@ -214,7 +181,7 @@ function canNamedRemoteFailureDownload(): boolean {
 
     <template v-if="viewMode === 'battle'">
       <Suspense>
-        <BattleLayoutView class="viewer-shell" />
+        <BattleLayoutView ref="battleView" class="viewer-shell" />
         <template #fallback>
           <div class="loading-viewer">正在初始化战斗布局…</div>
         </template>
@@ -233,22 +200,7 @@ function canNamedRemoteFailureDownload(): boolean {
         {{ loadingMessage || "正在解析…" }}
       </p>
       <template v-else>
-        <RemoteLoadNotice
-          :loading="loading"
-          :loading-message="loadingMessage"
-          :download-progress="downloadProgress"
-          :error="error"
-          :entry="remoteLoadContext?.entry ?? null"
-          :can-retry="!!remoteLoadContext"
-          :can-named-download="canNamedRemoteFailureDownload()"
-          :download-filename="remoteFailureDownloadFilename()"
-          :official-download-url="remoteFailureDownloadUrl()"
-          :github-download-url="remoteFailureGithubDownloadUrl()"
-          :downloading="downloadingBundle"
-          @retry="retryRemoteLoad"
-          @named-download="downloadNamedRemoteBundle"
-          @dismiss="dismissError"
-        />
+        <PetLoadNotice :loader="singleLoader" />
         <PetPicker
           :loading="loading"
           :initial-query="deepLinkQuery"
