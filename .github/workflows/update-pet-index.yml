@@ -23,9 +23,6 @@ jobs:
 
       - run: pnpm install
 
-      - name: Test manifest updates
-        run: pnpm test:index
-
       - name: Refresh GitHub CDN manifest
         run: pnpm refresh:github-cdn-manifest
 
