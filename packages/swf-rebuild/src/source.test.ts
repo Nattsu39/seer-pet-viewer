@@ -128,6 +128,35 @@ function fixture(): { file: SwfFile; clip: Clip } {
   return { file, clip };
 }
 
+describe("native blend mode export", () => {
+  it.each([
+    { name: "SwfSimpleShader_Layer", blend: 2 },
+    { name: "SwfSimpleGrabShader_Darken", blend: 6 },
+    { name: "SwfSimpleGrabShader_Difference", blend: 7 },
+    { name: "SwfSimpleGrabShader_Invert", blend: 10 },
+  ])("preserves $name in the rebuilt SWF and preview", ({ name, blend }) => {
+    const { file, clip } = fixture();
+    for (const frame of clip.sequences[0].frames) {
+      frame.subMeshes[0].material.name = name;
+    }
+    const result = rebuildPet(writeSwf(file), clip);
+    const output = readSwf(result.swf);
+    const idle = output.tags.find(
+      (tag) => tag.code === 39 && tag.data.readUInt16LE() === 12,
+    )!;
+    const preview = readSwf(result.previews.get("standby")!);
+    for (const tags of [readTags(idle.data.subarray(4)), preview.tags]) {
+      const placements = tags.filter((tag) => tag.code === 70);
+      expect(placements).toHaveLength(2);
+      expect(tags.filter((tag) => tag.code === 1)).toHaveLength(2);
+      for (const placement of placements) {
+        expect(placement.data[1] & 0x02).toBe(0x02);
+        expect(placement.data.at(-1)).toBe(blend);
+      }
+    }
+  });
+});
+
 describe("structural source discovery", () => {
   it("keeps the appear wrapper stopped on frame 2 while its child plays the complete sequence", () => {
     const { file, clip } = fixture();

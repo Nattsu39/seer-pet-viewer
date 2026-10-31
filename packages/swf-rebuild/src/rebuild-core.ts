@@ -292,7 +292,7 @@ export function rebuildPetCore(
               "Generated bitmap resolution is reduced; fine texture details may be lost.",
             ]
           : []),
-        "Overlay/Hardlight use native Flash modes; Unity grab-pass grouping can differ.",
+        "Darken/Difference/Invert/Overlay/Hardlight use native Flash modes; Unity grab-pass grouping can differ.",
         "CXFORM multiplier precision is 1/256; Unity stores 1/512. RGB alpha-gating near zero is approximate.",
         ...(totalMasks
           ? [

@@ -137,4 +137,78 @@ describe("native Flash mask conversion", () => {
     incorrect.floats._BlendOp = 0;
     expect(() => resolveMaterial(incorrect)).toThrow("Unsupported");
   });
+
+  it.each(
+    [
+      { mode: "Multiply", blend: 3, src: 2, grab: false },
+      { mode: "Layer", blend: 2, src: 1, grab: false },
+      { mode: "Darken", blend: 6, src: 1, grab: true },
+      { mode: "Difference", blend: 7, src: 1, grab: true },
+      { mode: "Invert", blend: 10, src: 1, grab: true },
+    ].flatMap(({ mode, blend, src, grab }) =>
+      [false, true].map((masked) => ({
+        name: `Swf${masked ? "Masked" : "Simple"}${grab ? "Grab" : ""}Shader_${mode}${masked ? "_1" : ""}`,
+        stencil: masked ? 1 : null,
+        blend,
+        src,
+        grab,
+      })),
+    ),
+  )(
+    "exports $name with native blend mode $blend",
+    ({ name, stencil, blend, src, grab }) => {
+      const draw: Material = {
+        name,
+        floats: {
+          _ExternalAlpha: 0,
+          _SrcBlend: src,
+          _DstBlend: 10,
+          _BlendOp: 0,
+          ...(stencil === null ? {} : { _StencilID: stencil }),
+        },
+      };
+      const names =
+        stencil === null
+          ? [normal, name]
+          : [normal, increment, name, decrement];
+      const input = frame(names);
+      input.subMeshes[names.indexOf(name)].material = draw;
+
+      const result = framePlacements(input, dictionary(), 100, [0, 0]);
+      expect(result.maskCount).toBe(stencil === null ? 0 : 1);
+      const placement = result.tags.at(-1)!;
+      expect(placement.code).toBe(70);
+      expect(placement.data[1] & 0x02).toBe(0x02);
+      expect(placement.data.at(-1)).toBe(blend);
+      expect(result.tags[0].data.at(-1)).toBe(1);
+      if (stencil !== null) {
+        const mask = result.tags[1];
+        expect(mask.code).toBe(26);
+        expect(mask.data.readUInt16LE(mask.data.length - 2)).toBe(3);
+      }
+
+      for (const [property, value] of Object.entries({
+        _ExternalAlpha: 1,
+        _SrcBlend: src === 1 ? 2 : 1,
+        _DstBlend: 1,
+        _BlendOp: 2,
+        _StencilID: 2,
+      })) {
+        expect(() =>
+          resolveMaterial({
+            ...draw,
+            floats: { ...draw.floats, [property]: value },
+          }),
+        ).toThrow(`Unsupported material: ${name}`);
+      }
+      expect(() =>
+        resolveMaterial({
+          ...draw,
+          name: grab
+            ? name.replace("GrabShader", "Shader")
+            : name.replace("Shader", "GrabShader"),
+        }),
+      ).toThrow("Unsupported material");
+    },
+  );
 });
