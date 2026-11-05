@@ -10,16 +10,18 @@ import type { SwfClipData } from "./types.js";
  */
 export async function extractAtlasBitmapFromBundle(
   data: ArrayBuffer | Uint8Array,
+  sharedAssets?: ArrayBuffer,
 ): Promise<ImageBitmap> {
   const { extractAtlasBitmapInWorker, parserWorkerAvailable } =
     await import("./worker-client.js");
   const buffer = data instanceof ArrayBuffer ? data : data.slice().buffer;
   if (parserWorkerAvailable()) {
-    return extractAtlasBitmapInWorker(buffer);
+    return extractAtlasBitmapInWorker(buffer, { sharedAssets });
   }
   const { parseBundleCore } = await import("./parse.js");
   const core = await parseBundleCore(buffer, "bundle", new MaterialResolver(), {
     atlasOnly: true,
+    sharedAssets,
   });
   if (!core.atlasPixels) {
     throw new Error("图集提取失败");
@@ -32,6 +34,7 @@ export async function extractAtlasBitmapFromBundle(
 export async function ensureSwfClipAtlas(
   clip: SwfClipData,
   bundleBuffer?: ArrayBuffer | null,
+  sharedAssets?: ArrayBuffer,
 ): Promise<void> {
   if (!isSwfAtlasReleased(clip.atlas)) return;
   if (!bundleBuffer) {
@@ -39,5 +42,5 @@ export async function ensureSwfClipAtlas(
       "图集已在分块渲染后释放；请重新加载 bundle 或预转换 swfclip 包",
     );
   }
-  clip.atlas = await extractAtlasBitmapFromBundle(bundleBuffer);
+  clip.atlas = await extractAtlasBitmapFromBundle(bundleBuffer, sharedAssets);
 }

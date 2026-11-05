@@ -135,6 +135,7 @@ export interface DownloadProgress {
 export type DownloadProgressCallback = (progress: DownloadProgress) => void;
 
 export interface FetchBundleOptions {
+  signal?: AbortSignal;
   onProgress?: DownloadProgressCallback;
   /** Content-Length 缺失时的预期体积（如索引 fileSize） */
   expectedSize?: number;
@@ -223,7 +224,7 @@ async function fetchBundleFromUrl(
 ): Promise<ArrayBuffer> {
   let res: Response;
   try {
-    res = await fetch(url, { cache: "force-cache" });
+    res = await fetch(url, { cache: "force-cache", signal: options?.signal });
   } catch {
     throw new Error("网络连接失败，请检查网络后重试");
   }

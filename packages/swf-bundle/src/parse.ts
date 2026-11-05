@@ -4,6 +4,7 @@ import {
   AssetType,
   type AssetFile,
   type MonoBehaviour,
+  type Sprite,
 } from "@arkntools/unity-js";
 import { atlasPixelsToBitmap } from "./atlas.js";
 import {
@@ -42,6 +43,8 @@ interface SwfClipAssetTree {
 }
 
 export interface ParseBundleCoreOptions {
+  /** 包含外部 Sprite 和 Texture2D 的精灵共享资源包 */
+  sharedAssets?: ArrayBuffer | Uint8Array;
   /** false 时跳过图集解码（图集仍存活的重解析用），宽高仍返回 */
   needAtlas?: boolean;
   /** true 时只解码图集，跳过 SwfClipAsset 与帧构建 */
@@ -119,7 +122,7 @@ export async function parseBundleCore(
 
   // 先完成所有经由 reader 的懒读取（材质、类型树、帧数据），
   // 再捕获纹理源并清空 bundle 缓冲，解码阶段不再有多余整包副本驻留。
-  if (options.atlasOnly) {
+  if (options.atlasOnly && !options.sharedAssets) {
     const texture = findAtlasTexture(bundle);
     if (!texture) throw new Error("未找到 Texture2D 图集");
     const source = captureAtlasTextureSource(texture);
@@ -136,45 +139,49 @@ export async function parseBundleCore(
     };
   }
 
-  const { tree } = findSwfClipAsset(bundle);
-  const sprite =
-    tree.Sprite?.m_FileID === 0
-      ? (bundle.objects.find(
-          (obj) =>
-            obj.type === AssetType.Sprite &&
-            String(obj.pathId) === String(tree.Sprite.m_PathID),
-        ) as import("@arkntools/unity-js").Sprite | undefined)
-      : undefined;
+  const { tree, mb } = findSwfClipAsset(bundle);
+  const petId =
+    extractPetId(fileName, mb.name) || extractPetId(fileName, tree.Name);
+  const external = tree.Sprite?.m_FileID > 0;
+  let atlasBundle = bundle;
+  if (external) {
+    if (!options.sharedAssets) {
+      throw new Error(
+        `请同时导入动画包与 petanimpackage_share_assets_swf_${petId || "{id}"}.bundle`,
+      );
+    }
+    atlasBundle = await loadAssetBundle(options.sharedAssets);
+  }
+  const sprite = atlasBundle.objects.find(
+    (obj) =>
+      obj.type === AssetType.Sprite &&
+      String(obj.pathId) === String(tree.Sprite?.m_PathID),
+  ) as Sprite | undefined;
+  if (external && !sprite)
+    throw new Error("SWF 共享资源包与动画引用的 Sprite 不匹配");
   const pixelsPerUnit = resolveSwfPixelsPerUnit(sprite?.pixelsToUnits);
-  const sequences = buildSequences(tree, resolver);
+  const sequences = options.atlasOnly ? [] : buildSequences(tree, resolver);
 
-  const texture = findAtlasTexture(bundle);
+  const texture = external
+    ? sprite?.spriteRenderData.texture.object
+    : findAtlasTexture(bundle);
   if (!texture) throw new Error("未找到 Texture2D 图集");
   const source = captureAtlasTextureSource(texture);
   const { width, height } = source;
   releaseBundleBuffers(bundle);
-
-  if (options.needAtlas === false) {
-    return {
-      petId: extractPetId(fileName, tree.Name),
-      name: tree.Name,
-      frameRate: tree.FrameRate,
-      pixelsPerUnit,
-      atlasWidth: width,
-      atlasHeight: height,
-      sequences,
-      materialWarnings: resolver.drainWarnings(),
-    };
-  }
+  if (external) releaseBundleBuffers(atlasBundle);
 
   return {
-    petId: extractPetId(fileName, tree.Name),
+    petId,
     name: tree.Name,
     frameRate: tree.FrameRate,
     pixelsPerUnit,
     atlasWidth: width,
     atlasHeight: height,
-    atlasPixels: decodeFromSource(source, texture),
+    atlasPixels:
+      options.needAtlas === false
+        ? undefined
+        : decodeFromSource(source, texture),
     sequences,
     materialWarnings: resolver.drainWarnings(),
   };

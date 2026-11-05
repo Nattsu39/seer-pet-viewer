@@ -10,6 +10,7 @@ export interface PetAnimIndexEntry {
   id: number;
   kind: "swf" | "spine";
   variant?: "small";
+  sharedAtlas?: string;
   name: string;
   path: string;
   fileSize: number;

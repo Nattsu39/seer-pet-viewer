@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { defineAsyncComponent, onMounted, ref } from "vue";
+import { defineAsyncComponent, onMounted, onUnmounted, ref, watch } from "vue";
 import AppHeader from "./components/AppHeader.vue";
 import PetPicker from "./components/PetPicker.vue";
 import PetLoadNotice from "./components/PetLoadNotice.vue";
@@ -10,6 +10,7 @@ import { findPetIndexEntry, parsePetDeepLink } from "./lib/pet-deep-link";
 import { isViewerWarningLink } from "./lib/viewer-warning";
 import type { PetAnimIndex, PetAnimIndexEntry } from "./lib/pet-anim-index";
 import { isRemoteBundleEnabled } from "./lib/remote-bundle";
+import { disposePetClip } from "./lib/dispose-pet-clip";
 
 const PetViewer = defineAsyncComponent(
   () => import("./components/PetViewer.vue"),
@@ -47,6 +48,25 @@ const {
   loadBundleFromRemote,
   dismissWarnings,
 } = singleLoader;
+
+// 单宠数据跨布局保留；再次挂载播放器时仍需要序列和图集源。
+watch(
+  pet,
+  (current, previous) => {
+    if (!previous) return;
+    if (
+      current?.type === "swf" &&
+      previous.type === "swf" &&
+      current.clip.atlas === previous.clip.atlas
+    )
+      return;
+    disposePetClip(previous);
+  },
+  { flush: "post" },
+);
+onUnmounted(() => {
+  if (pet.value) disposePetClip(pet.value);
+});
 
 const dragOver = ref(false);
 const fps = ref(0);
@@ -104,8 +124,9 @@ async function handleFiles(files: FileList) {
       return;
     }
   }
-  const bundle = arr.find((f) => !f.name.endsWith(".json"));
-  if (bundle) await loader.loadBundleFile(bundle);
+  const bundles = arr.filter((f) => !f.name.endsWith(".json"));
+  if (bundles.length)
+    await loader.loadBundleFile(bundles.length === 1 ? bundles[0]! : bundles);
 }
 
 function getImportLoader() {
@@ -217,6 +238,10 @@ function onRemoteSelect(entry: PetAnimIndexEntry, index: PetAnimIndex) {
         <p class="drop-hint">
           SWF 精灵需额外导入共享材质
           <code>{{ sharedMaterialBundleName }}</code>
+        </p>
+        <p class="drop-hint">
+          动画使用共享图集时，可同时选择或拖入主包和
+          <code>petanimpackage_share_assets_swf_{id}.bundle</code>。
         </p>
       </template>
     </div>

@@ -14,7 +14,6 @@ import SwfExportControls from "./SwfExportControls.vue";
 import { useHistoryOverlay } from "../composables/useHistoryOverlay";
 import { SwfPlayer } from "@seer-pet-anim/swf-renderer";
 import { ensureSwfClipAtlas } from "@seer-pet-anim/swf-bundle";
-import { disposePetClip } from "../lib/dispose-pet-clip";
 import {
   playPreviewOnce,
   togglePreviewPlayback,
@@ -180,6 +179,7 @@ function trackPlayback(p: SwfPlayer | SpinePlayer) {
 async function initSwfPlayer(
   clip: SwfClipData,
   bundleBuffer?: ArrayBuffer | null,
+  sharedAssets?: ArrayBuffer,
 ) {
   spinePlayer.value?.destroy();
   spinePlayer.value = null;
@@ -188,7 +188,7 @@ async function initSwfPlayer(
   syncFrameCount();
   currentFrame.value = 0;
 
-  await ensureSwfClipAtlas(clip, bundleBuffer);
+  await ensureSwfClipAtlas(clip, bundleBuffer, sharedAssets);
 
   const p = new SwfPlayer();
   p.setOnViewportChange(syncViewportState);
@@ -269,17 +269,15 @@ async function initPlayer() {
   swfPlayer.value = null;
   spinePlayer.value = null;
 
-  if (activeClip && activeClip !== props.pet) {
-    disposePetClip(activeClip);
-    activeClip = null;
-  }
-
   if (props.pet.type === "swf") {
-    await initSwfPlayer(props.pet.clip, props.pet.bundleBuffer ?? null);
+    await initSwfPlayer(
+      props.pet.clip,
+      props.pet.bundleBuffer,
+      props.pet.sharedAssets,
+    );
   } else {
     await initSpinePlayer(props.pet.clip);
   }
-  activeClip = props.pet;
 }
 
 watch(
@@ -370,7 +368,6 @@ function applyViewportState() {
 
 let fitViewFrame = 0;
 let hostResizeObserver: ResizeObserver | null = null;
-let activeClip: PetClip | null = null;
 
 function teardownViewer(): void {
   hostResizeObserver?.disconnect();
@@ -381,10 +378,6 @@ function teardownViewer(): void {
   spinePlayer.value?.destroy();
   swfPlayer.value = null;
   spinePlayer.value = null;
-  if (activeClip) {
-    disposePetClip(activeClip);
-    activeClip = null;
-  }
 }
 
 function scheduleFitView() {

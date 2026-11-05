@@ -12,24 +12,29 @@ import RemoteLoadNotice from "./RemoteLoadNotice.vue";
 const props = defineProps<{ loader: ReturnType<typeof usePetLoader> }>();
 
 const entry = computed(() => props.loader.remoteLoadContext.value?.entry);
+const downloadBundle = computed(
+  () => props.loader.remoteLoadContext.value?.failedBundle ?? entry.value,
+);
 const canNamedDownload = computed(
   () =>
     !props.loader.cdnFileTooLarge.value &&
-    !!entry.value &&
-    canNamedRemoteBundleDownload(entry.value),
+    !!downloadBundle.value &&
+    canNamedRemoteBundleDownload(downloadBundle.value),
 );
 const downloadFilename = computed(() =>
-  entry.value ? remoteBundleDownloadFilename(entry.value) : null,
+  downloadBundle.value
+    ? remoteBundleDownloadFilename(downloadBundle.value)
+    : null,
 );
 const githubDownloadUrl = computed(() =>
-  props.loader.cdnFileTooLarge.value && entry.value
-    ? githubBundleRawDownloadUrl(entry.value)
+  props.loader.cdnFileTooLarge.value && downloadBundle.value
+    ? githubBundleRawDownloadUrl(downloadBundle.value)
     : null,
 );
 const officialDownloadUrl = computed(() => {
-  if (!entry.value) return null;
+  if (!downloadBundle.value) return null;
   try {
-    return newseerBundleDownloadUrl(entry.value);
+    return newseerBundleDownloadUrl(downloadBundle.value);
   } catch {
     return null;
   }
@@ -43,6 +48,7 @@ const officialDownloadUrl = computed(() => {
     :download-progress="loader.downloadProgress.value"
     :error="loader.error.value"
     :entry="entry ?? null"
+    :download-path="downloadBundle?.path"
     :can-retry="!!loader.remoteLoadContext.value"
     :can-named-download="canNamedDownload"
     :download-filename="downloadFilename"

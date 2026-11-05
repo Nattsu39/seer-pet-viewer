@@ -10,7 +10,7 @@ import {
   SHARED_SWF_MATERIAL_BUNDLE_NAME,
   type SwfClipJson,
 } from "@seer-pet-anim/swf-bundle";
-import type { SpineClipData } from "@seer-pet-anim/spine-bundle";
+import type { BundleKind, SpineClipData } from "@seer-pet-anim/spine-bundle";
 import {
   parseSpineBundleInWorker,
   loadSpineClipPackage,
@@ -39,6 +39,7 @@ import type { ViewerWarning } from "../lib/viewer-warning";
 export interface RemoteLoadContext {
   entry: PetAnimIndexEntry;
   sharedBundles: PetAnimSharedBundle[];
+  failedBundle?: PetAnimSharedBundle;
 }
 
 function formatRemoteLoadError(error: unknown): string {
@@ -53,6 +54,8 @@ export type PetClip =
   | {
       type: "swf";
       clip: SwfClipData;
+      bundleFileName?: string;
+      sharedAssets?: ArrayBuffer;
       bundleBuffer?: ArrayBuffer | null;
       sharedMaterialBuffer?: ArrayBuffer | null;
     }
@@ -62,6 +65,26 @@ const SHARED_MATERIAL_BASE_NAME = SHARED_SWF_MATERIAL_BUNDLE_NAME.replace(
   /\.bundle$/,
   "",
 );
+
+const SWF_ATLAS_NAME = /^petanimpackage_share_assets_swf_\d+(?:\.bundle)?$/i;
+
+async function splitBundleFiles(files: File[]) {
+  let atlas = files.find((file) => SWF_ATLAS_NAME.test(file.name));
+  if (!atlas && files.length === 2) {
+    // 官方源下载的文件可能只保留了清单中的 hash。
+    const index = await loadPetAnimIndex().catch(() => null);
+    atlas = files.find((file) =>
+      index?.sharedBundles.some(
+        (item) => item.path === file.name && SWF_ATLAS_NAME.test(item.name),
+      ),
+    );
+  }
+  const main = files.filter((file) => file !== atlas);
+  if (main.length !== 1) {
+    throw new Error("请选择一个精灵动画包，可同时选择它依赖的 SWF 共享图集");
+  }
+  return { file: main[0]!, atlasFile: atlas };
+}
 
 export function usePetLoader(options?: {
   autoImportSharedMaterials?: () => boolean;
@@ -92,8 +115,6 @@ export function usePetLoader(options?: {
     return loadController;
   }
 
-  let lastSwfBuffer: ArrayBuffer | null = null;
-  let lastSwfFileName = "";
   let sharedMaterialBuffer: ArrayBuffer | null = null;
   let sharedMaterialRemoteLoaded = false;
 
@@ -134,8 +155,11 @@ export function usePetLoader(options?: {
     buffer: ArrayBuffer,
     fileName: string,
     signal: AbortSignal,
+    sharedAssets?: ArrayBuffer,
+    detectedKind?: BundleKind,
   ) {
-    const kind = await readBundleMetadata("detect", buffer, signal);
+    const kind =
+      detectedKind ?? (await readBundleMetadata("detect", buffer, signal));
     signal.throwIfAborted();
     if (kind === "video") {
       throw new Error("不支持的视频 bundle（VideoClip）");
@@ -145,8 +169,6 @@ export function usePetLoader(options?: {
     }
 
     if (kind === "spine") {
-      lastSwfBuffer = null;
-      lastSwfFileName = "";
       const clip = await parseSpineBundleInWorker(buffer.slice(0), fileName, {
         signal,
       });
@@ -156,13 +178,11 @@ export function usePetLoader(options?: {
       }
       pet.value = { type: "spine", clip };
     } else {
-      lastSwfBuffer = buffer.slice(0);
-      lastSwfFileName = fileName;
       const clip = await parseBundleInWorker(
-        lastSwfBuffer,
-        lastSwfFileName,
+        buffer,
+        fileName,
         materialSnapshot(),
-        { signal },
+        { signal, sharedAssets },
       );
       if (signal.aborted) {
         disposePetClip({ type: "swf", clip });
@@ -171,27 +191,49 @@ export function usePetLoader(options?: {
       pet.value = {
         type: "swf",
         clip,
-        bundleBuffer: lastSwfBuffer,
+        sharedAssets,
+        bundleBuffer: buffer,
+        bundleFileName: fileName,
         sharedMaterialBuffer,
       };
       warnings.value = buildSwfWarnings(clip.materialWarnings, clip);
     }
   }
 
-  async function tryAutoImportSharedMaterials() {
+  async function tryAutoImportSharedMaterials(signal: AbortSignal) {
     if (!options?.autoImportSharedMaterials?.()) return;
     if (!isRemoteBundleEnabled()) return;
-    if (materialCount.value > 0 || sharedMaterialRemoteLoaded) return;
 
     const index = await loadPetAnimIndex().catch(() => null);
+    signal.throwIfAborted();
     if (!index) return;
 
-    loadingMessage.value = "正在下载 SWF 共享材质…";
-    await ensureSharedMaterialLoaded(index.sharedBundles);
+    await ensureSharedMaterialLoaded(index.sharedBundles, signal);
     clearDownloadProgress();
+    return index;
   }
 
-  async function loadBundleFile(file: File) {
+  async function fetchSharedAtlas(
+    name: string,
+    sharedBundles: PetAnimSharedBundle[],
+    signal: AbortSignal,
+  ) {
+    const atlas = sharedBundles.find((item) => item.name === name);
+    if (!atlas) throw new Error(`索引中缺少 SWF 共享图集 ${name}.bundle`);
+    loadingMessage.value = `正在下载 SWF 共享图集 ${name}…`;
+    try {
+      return await fetchBundleFromIndex(atlas, {
+        onProgress: reportDownloadProgress,
+        signal,
+      });
+    } catch (error) {
+      signal.throwIfAborted();
+      if (remoteLoadContext.value) remoteLoadContext.value.failedBundle = atlas;
+      throw error;
+    }
+  }
+
+  async function loadBundleFile(input: File | File[]) {
     const controller = beginLoad();
     loading.value = true;
     error.value = null;
@@ -199,17 +241,43 @@ export function usePetLoader(options?: {
     warnings.value = [];
     const t0 = performance.now();
     try {
+      const { file, atlasFile } = await splitBundleFiles(
+        Array.isArray(input) ? input : [input],
+      );
       const buffer = await file.arrayBuffer();
       const kind = await readBundleMetadata(
         "detect",
         buffer,
         controller.signal,
       );
+      let sharedAssets: ArrayBuffer | undefined;
       if (kind === "swf") {
-        await tryAutoImportSharedMaterials();
+        const index = await tryAutoImportSharedMaterials(controller.signal);
+        if (atlasFile) {
+          sharedAssets = await atlasFile.arrayBuffer();
+        } else if (index) {
+          const name = file.name.replace(/\.bundle$/i, "");
+          const entry = index.entries.find(
+            (item) => item.name === name || item.path === name,
+          );
+          if (entry?.sharedAtlas) {
+            sharedAssets = await fetchSharedAtlas(
+              entry.sharedAtlas,
+              index.sharedBundles,
+              controller.signal,
+            );
+          }
+        }
       }
+      controller.signal.throwIfAborted();
       loadingMessage.value = `正在解析 ${file.name}…`;
-      await parseBundleBuffer(buffer, file.name, controller.signal);
+      await parseBundleBuffer(
+        buffer,
+        file.name,
+        controller.signal,
+        sharedAssets,
+        kind,
+      );
       parseMs.value = Math.round(performance.now() - t0);
     } catch (e) {
       if (controller.signal.aborted) return;
@@ -224,32 +292,36 @@ export function usePetLoader(options?: {
     }
   }
 
-  async function applyMaterialBundleBuffer(buffer: ArrayBuffer) {
-    const controller = loadController;
+  async function applyMaterialBundleBuffer(
+    buffer: ArrayBuffer,
+    signal: AbortSignal,
+    reparse: boolean,
+  ) {
     const {
       count,
       warnings: w,
       materials,
-    } = await readBundleMetadata("materials", buffer, controller.signal);
-    controller.signal.throwIfAborted();
+    } = await readBundleMetadata("materials", buffer, signal);
+    signal.throwIfAborted();
     materialResolver.restore({ ...materialResolver.snapshot(), ...materials });
     sharedMaterialBuffer = buffer;
     materialCount.value = materialResolver.size;
 
-    if (pet.value?.type === "swf" && lastSwfBuffer) {
+    const current = pet.value;
+    if (reparse && current?.type === "swf" && current.bundleBuffer) {
       // 重解析走 Worker：图集仍存活时连解码都跳过；已释放时峰值随 Worker 终止归还，
       // 不会像旧的主线程 reparse 那样留下永不回收的 wasm 线性内存（>500 MB）
       const clip = await reparseSwfClipInWorker(
-        lastSwfBuffer,
-        lastSwfFileName,
+        current.bundleBuffer,
+        current.bundleFileName ?? "bundle",
         materialSnapshot(),
-        pet.value.clip.atlas,
-        { signal: controller.signal },
+        current.clip.atlas,
+        { signal, sharedAssets: current.sharedAssets },
       );
+      signal.throwIfAborted();
       pet.value = {
-        type: "swf",
+        ...current,
         clip,
-        bundleBuffer: lastSwfBuffer,
         sharedMaterialBuffer,
       };
       warnings.value = buildSwfWarnings(
@@ -271,11 +343,13 @@ export function usePetLoader(options?: {
 
   async function ensureSharedMaterialLoaded(
     sharedBundles: PetAnimSharedBundle[],
+    signal: AbortSignal,
   ) {
     if (materialCount.value > 0 || sharedMaterialRemoteLoaded) {
       return;
     }
 
+    loadingMessage.value = "正在下载 SWF 共享材质…";
     const shared = sharedBundles.find(
       (b) => b.name === SHARED_MATERIAL_BASE_NAME,
     );
@@ -286,9 +360,10 @@ export function usePetLoader(options?: {
     }
 
     const buffer = await fetchBundleFromIndex(shared, {
+      signal,
       onProgress: reportDownloadProgress,
     });
-    await applyMaterialBundleBuffer(buffer);
+    await applyMaterialBundleBuffer(buffer, signal, false);
     sharedMaterialRemoteLoaded = true;
   }
 
@@ -311,13 +386,21 @@ export function usePetLoader(options?: {
     clearDownloadProgress();
     const t0 = performance.now();
     try {
+      let sharedAssets: ArrayBuffer | undefined;
       if (entry.kind === "swf") {
-        loadingMessage.value = `正在下载 SWF 共享材质…`;
-        await ensureSharedMaterialLoaded(sharedBundles);
+        await ensureSharedMaterialLoaded(sharedBundles, controller.signal);
+        if (entry.sharedAtlas) {
+          sharedAssets = await fetchSharedAtlas(
+            entry.sharedAtlas,
+            sharedBundles,
+            controller.signal,
+          );
+        }
         clearDownloadProgress();
       }
       loadingMessage.value = `正在下载精灵 ${petLabel(entry)}…`;
       const buffer = await fetchBundleFromIndex(entry, {
+        signal: controller.signal,
         onProgress: reportDownloadProgress,
       });
       clearDownloadProgress();
@@ -326,6 +409,7 @@ export function usePetLoader(options?: {
         buffer,
         `${entry.name}.bundle`,
         controller.signal,
+        sharedAssets,
       );
       parseMs.value = Math.round(performance.now() - t0);
       remoteLoadContext.value = null;
@@ -362,7 +446,7 @@ export function usePetLoader(options?: {
     const ctx = remoteLoadContext.value;
     if (!ctx) return;
 
-    const entry = ctx.entry;
+    const entry = ctx.failedBundle ?? ctx.entry;
     downloadingBundle.value = true;
     cdnFileTooLarge.value = false;
     clearDownloadProgress();
@@ -390,11 +474,9 @@ export function usePetLoader(options?: {
     const controller = beginLoad();
     loading.value = true;
     error.value = null;
-    lastSwfBuffer = null;
-    lastSwfFileName = "";
     const t0 = performance.now();
     try {
-      await tryAutoImportSharedMaterials();
+      await tryAutoImportSharedMaterials(controller.signal);
       const list = Array.from(files);
       const metaFile = list.find((f) => f.name === "meta.json");
       const atlasFile = list.find((f) => f.name === "atlas.png");
@@ -427,8 +509,6 @@ export function usePetLoader(options?: {
     const controller = beginLoad();
     loading.value = true;
     error.value = null;
-    lastSwfBuffer = null;
-    lastSwfFileName = "";
     const t0 = performance.now();
     try {
       const list = Array.from(files);
@@ -480,17 +560,19 @@ export function usePetLoader(options?: {
   }
 
   async function loadMaterialBundleFile(file: File) {
+    const controller = beginLoad();
     loading.value = true;
     error.value = null;
     const t0 = performance.now();
     try {
       const buffer = await file.arrayBuffer();
-      await applyMaterialBundleBuffer(buffer);
+      await applyMaterialBundleBuffer(buffer, controller.signal, true);
       parseMs.value = Math.round(performance.now() - t0);
     } catch (e) {
+      if (controller.signal.aborted) return;
       error.value = e instanceof Error ? e.message : String(e);
     } finally {
-      loading.value = false;
+      if (loadController === controller) loading.value = false;
     }
   }
 
@@ -504,8 +586,6 @@ export function usePetLoader(options?: {
     warnings.value = [];
     warningsVisible.value = true;
     parseMs.value = 0;
-    lastSwfBuffer = null;
-    lastSwfFileName = "";
     loadController.abort();
     loading.value = false;
   }

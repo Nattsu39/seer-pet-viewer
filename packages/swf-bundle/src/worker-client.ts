@@ -249,7 +249,13 @@ async function handleWorkerMessage(
   }
 }
 
+interface WorkerParseOptions {
+  signal?: AbortSignal;
+  sharedAssets?: ArrayBuffer;
+}
+
 interface WorkerRequestPayload {
+  sharedAssets?: ArrayBuffer;
   mode?: ParserWorkerMode;
   fileName?: string;
   materials?: Record<string, SwfMaterialState>;
@@ -295,7 +301,11 @@ function requestWorkerParse<T>(
     active.set(id, request as PendingRequest<unknown>);
     pending.set(id, request as PendingRequest<unknown>);
     try {
-      state.worker.postMessage({ id, buffer: copy, ...payload }, [copy]);
+      const sharedAssets = payload.sharedAssets?.slice(0);
+      state.worker.postMessage(
+        { id, buffer: copy, ...payload, sharedAssets },
+        sharedAssets ? [copy, sharedAssets] : [copy],
+      );
     } catch (error) {
       failWorker(state, asError(error, "无法发送解析请求"));
     }
@@ -306,11 +316,11 @@ export function parseBundleInWorker(
   buffer: ArrayBuffer,
   fileName: string,
   materials?: Record<string, SwfMaterialState>,
-  options: { signal?: AbortSignal } = {},
+  options: WorkerParseOptions = {},
 ): Promise<SwfClipData> {
   return requestWorkerParse(
     buffer,
-    { mode: "full", fileName, materials },
+    { mode: "full", fileName, materials, sharedAssets: options.sharedAssets },
     async (response) => {
       const parsed = decodeFramesResponse(response);
       const atlas = await resolveAtlasBitmap(response);
@@ -331,12 +341,17 @@ export function reparseSwfClipInWorker(
   fileName: string,
   materials: Record<string, SwfMaterialState> | undefined,
   atlas: ImageBitmap,
-  options: { signal?: AbortSignal } = {},
+  options: WorkerParseOptions = {},
 ): Promise<SwfClipData> {
   const needAtlas = isSwfAtlasReleased(atlas);
   return requestWorkerParse(
     buffer,
-    { mode: needAtlas ? "full" : "frames", fileName, materials },
+    {
+      mode: needAtlas ? "full" : "frames",
+      fileName,
+      materials,
+      sharedAssets: options.sharedAssets,
+    },
     async (response) => {
       const parsed = decodeFramesResponse(response);
       const clipAtlas = needAtlas ? await resolveAtlasBitmap(response) : atlas;
@@ -352,11 +367,11 @@ export function reparseSwfClipInWorker(
 /** 仅在 Worker 内重解码图集位图（分块渲染释放原图集后的 remount 用） */
 export function extractAtlasBitmapInWorker(
   buffer: ArrayBuffer,
-  options: { signal?: AbortSignal } = {},
+  options: WorkerParseOptions = {},
 ): Promise<ImageBitmap> {
   return requestWorkerParse(
     buffer,
-    { mode: "atlas" },
+    { mode: "atlas", sharedAssets: options.sharedAssets },
     resolveAtlasBitmap,
     options.signal,
     (bitmap) => bitmap.close(),

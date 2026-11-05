@@ -295,11 +295,13 @@ function sideLoading(side: BattleSide): boolean {
 
 function onSideBundleInput(side: BattleSide, event: Event): void {
   const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
+  const files = Array.from(input.files ?? []);
   input.value = "";
-  if (!file || exporting.value) return;
+  if (!files.length || exporting.value) return;
   selectedSide.value = side;
-  void state(side).loader.loadBundleFile(file);
+  void state(side).loader.loadBundleFile(
+    files.length === 1 ? files[0]! : files,
+  );
 }
 
 function onSideSelect(
@@ -389,7 +391,7 @@ async function mountSidePlayer(side: BattleSide): Promise<void> {
 
     let player: BattlePlayer;
     if (pet.type === "swf") {
-      await ensureSwfClipAtlas(pet.clip, pet.bundleBuffer ?? null);
+      await ensureSwfClipAtlas(pet.clip, pet.bundleBuffer, pet.sharedAssets);
       if (mountTokens[side] !== token || st.loader.pet.value !== pet) return;
       const p = new SwfPlayer();
       p.setOnFrameChange(onFrame);
@@ -686,6 +688,7 @@ onBeforeUnmount(() => {
           <span>导入 Bundle 到{{ side === "left" ? "左" : "右" }}侧</span>
           <input
             type="file"
+            multiple
             :disabled="sideLoading(side) || exporting"
             @change="onSideBundleInput(side, $event)"
           />

@@ -140,7 +140,12 @@ onUnmounted(() => {
       <template v-if="!isMobile">
         <label class="btn primary">
           导入 Bundle
-          <input type="file" hidden @change="emit('fileInput', $event)" />
+          <input
+            type="file"
+            hidden
+            multiple
+            @change="emit('fileInput', $event)"
+          />
         </label>
         <label class="btn">
           导入 .swfclip
@@ -233,6 +238,7 @@ onUnmounted(() => {
           <input
             type="file"
             hidden
+            multiple
             @change="
               emit('fileInput', $event);
               closeMobileMenu();

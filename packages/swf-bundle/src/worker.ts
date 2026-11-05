@@ -12,6 +12,7 @@ import type { SwfMaterialState } from "./types.js";
 export interface WorkerRequest {
   id: number;
   buffer: ArrayBuffer;
+  sharedAssets?: ArrayBuffer;
   mode?: ParserWorkerMode;
   fileName?: string;
   materials?: Record<string, SwfMaterialState>;
@@ -37,7 +38,14 @@ async function createAtlasBitmap(
 }
 
 self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
-  const { id, buffer, mode = "full", fileName, materials } = event.data;
+  const {
+    id,
+    buffer,
+    mode = "full",
+    fileName,
+    materials,
+    sharedAssets,
+  } = event.data;
   try {
     const resolver = new MaterialResolver();
     if (materials) resolver.restore(materials);
@@ -49,6 +57,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         resolver,
         {
           atlasOnly: true,
+          sharedAssets,
         },
       );
       if (!core.atlasPixels) throw new Error("图集提取未返回像素");
@@ -75,6 +84,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     const needAtlas = mode !== "frames";
     const core = await parseBundleCore(buffer, fileName ?? "bundle", resolver, {
       needAtlas,
+      sharedAssets,
     });
 
     if (!needAtlas) {

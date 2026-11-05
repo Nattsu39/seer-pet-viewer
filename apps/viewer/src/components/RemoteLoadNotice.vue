@@ -15,6 +15,7 @@ const props = defineProps<{
   entry?: PetAnimIndexEntry | null;
   canRetry?: boolean;
   canNamedDownload?: boolean;
+  downloadPath?: string;
   downloadFilename?: string | null;
   officialDownloadUrl?: string | null;
   /** CDN 文件超限时的 GitHub 手动下载链接 */
@@ -56,7 +57,7 @@ const showOfficialFilenameTip = computed(
 
 /** 官方直链下载后，浏览器通常以 URL 中的 hash 作为文件名 */
 const officialSavedFilename = computed(() => {
-  const hash = props.entry?.path?.trim();
+  const hash = (props.downloadPath ?? props.entry?.path)?.trim();
   if (!hash) return null;
   return hash;
 });

@@ -41,18 +41,27 @@ function classifyBundleName(bundleName) {
 const REMOTE_BUNDLE_MAX_BYTES = 5 * 1024 * 1024;
 
 /**
- * @param {{ packageVersion: string; bundles: Array<{ bundleName: string; fileHash: string; fileSize: bigint }> }} manifest
+ * @param {{ packageVersion: string; assets?: Array<{bundleId: number; dependIds: number[]}>; bundles: Array<{ bundleName: string; fileHash: string; fileSize: bigint }> }} manifest
  * @param {{ mirroredNames?: Set<string> }} [options]
  */
 export function buildPetAnimIndex(manifest, options = {}) {
   const mirroredNames = options.mirroredNames ?? new Set();
+  const swfAtlases = new Map();
+  for (const asset of manifest.assets ?? []) {
+    for (const id of asset.dependIds) {
+      const name = manifest.bundles[id].bundleName.replace(/\.bundle$/i, "");
+      if (/^petanimpackage_share_assets_swf_\d+$/.test(name)) {
+        swfAtlases.set(asset.bundleId, name);
+      }
+    }
+  }
 
   /** @type {Array<{ name: string; path: string; fileSize: number; mirrored?: boolean }>} */
   const sharedBundles = [];
-  /** @type {Array<{ id: number; kind: string; variant?: string; name: string; path: string; fileSize: number; mirrored?: boolean }>} */
+  /** @type {Array<{ id: number; kind: string; variant?: string; sharedAtlas?: string; name: string; path: string; fileSize: number; mirrored?: boolean }>} */
   const entries = [];
 
-  for (const bundle of manifest.bundles) {
+  for (const [bundleId, bundle] of manifest.bundles.entries()) {
     const classified = classifyBundleName(bundle.bundleName);
     const path = bundle.fileHash;
     const fileSize = Number(bundle.fileSize);
@@ -72,7 +81,7 @@ export function buildPetAnimIndex(manifest, options = {}) {
     }
 
     if (classified.type === "entry") {
-      /** @type {{ id: number; kind: string; variant?: string; name: string; path: string; fileSize: number; mirrored?: boolean }} */
+      /** @type {{ id: number; kind: string; variant?: string; sharedAtlas?: string; name: string; path: string; fileSize: number; mirrored?: boolean }} */
       const entry = {
         id: classified.id,
         kind: classified.kind,
@@ -82,6 +91,9 @@ export function buildPetAnimIndex(manifest, options = {}) {
       };
       if (classified.variant) {
         entry.variant = classified.variant;
+      }
+      if (classified.kind === "swf" && swfAtlases.has(bundleId)) {
+        entry.sharedAtlas = swfAtlases.get(bundleId);
       }
       if (fileSize >= REMOTE_BUNDLE_MAX_BYTES && mirroredNames.has(classified.name)) {
         entry.mirrored = true;

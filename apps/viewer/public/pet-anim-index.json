@@ -1,6 +1,6 @@
 {
   "version": "20261029213508",
-  "updatedAt": "2026-10-30T04:44:44.524Z",
+  "updatedAt": "2026-11-05T01:33:43.726Z",
   "sharedBundles": [
     {
       "name": "petanimpackage_share_assets_flashtools_resources_materials_generated",
@@ -24113,7 +24113,8 @@
       "kind": "swf",
       "name": "ppets_3291",
       "path": "d9f98fdc04f0cdd17d43697830e8f779",
-      "fileSize": 427100
+      "fileSize": 427100,
+      "sharedAtlas": "petanimpackage_share_assets_swf_3291"
     },
     {
       "id": 3291,
@@ -38624,7 +38625,8 @@
       "kind": "swf",
       "name": "ppets_13291",
       "path": "6815f7528ff48d4e83a5a54a0bd8a9d2",
-      "fileSize": 427258
+      "fileSize": 427258,
+      "sharedAtlas": "petanimpackage_share_assets_swf_13291"
     },
     {
       "id": 13291,
@@ -39563,7 +39565,8 @@
       "kind": "swf",
       "name": "ppets_1400184",
       "path": "606979454440393bd5b044da5749f157",
-      "fileSize": 221501
+      "fileSize": 221501,
+      "sharedAtlas": "petanimpackage_share_assets_swf_1400184"
     },
     {
       "id": 1400184,
@@ -39812,7 +39815,8 @@
       "kind": "swf",
       "name": "ppets_1400222",
       "path": "36f86590994b76f24ae9dd839fa1fe91",
-      "fileSize": 365012
+      "fileSize": 365012,
+      "sharedAtlas": "petanimpackage_share_assets_swf_1400222"
     },
     {
       "id": 1400223,
@@ -41982,7 +41986,8 @@
       "kind": "swf",
       "name": "ppets_1400510",
       "path": "4e371d9423e22a62c005aff6db2bd21b",
-      "fileSize": 943639
+      "fileSize": 943639,
+      "sharedAtlas": "petanimpackage_share_assets_swf_1400510"
     },
     {
       "id": 1400511,
@@ -44497,7 +44502,8 @@
       "kind": "swf",
       "name": "ppets_11400184",
       "path": "848309aa3f3b18786fe09c1f0326c3a5",
-      "fileSize": 221547
+      "fileSize": 221547,
+      "sharedAtlas": "petanimpackage_share_assets_swf_11400184"
     },
     {
       "id": 11400184,
@@ -44512,14 +44518,16 @@
       "kind": "swf",
       "name": "ppets_11400222",
       "path": "219e3b0e64509418727c3323b12ac2d2",
-      "fileSize": 364987
+      "fileSize": 364987,
+      "sharedAtlas": "petanimpackage_share_assets_swf_11400222"
     },
     {
       "id": 11400510,
       "kind": "swf",
       "name": "ppets_11400510",
       "path": "5aae18cb093ea52f83b3740ac9a8a459",
-      "fileSize": 944224
+      "fileSize": 944224,
+      "sharedAtlas": "petanimpackage_share_assets_swf_11400510"
     },
     {
       "id": 11400658,
