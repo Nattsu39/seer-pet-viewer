@@ -1,6 +1,6 @@
 {
-  "version": "20261029213508",
-  "updatedAt": "2026-11-05T01:33:43.726Z",
+  "version": "20261105205854",
+  "updatedAt": "2026-11-06T03:32:08.724Z",
   "sharedBundles": [
     {
       "name": "petanimpackage_share_assets_flashtools_resources_materials_generated",
@@ -37369,6 +37369,14 @@
       "mirrored": true
     },
     {
+      "id": 4964,
+      "kind": "swf",
+      "name": "ppets_4964",
+      "path": "7029aab6e949b46dd59758153f2c6ea0",
+      "fileSize": 14742636,
+      "mirrored": true
+    },
+    {
       "id": 4995,
       "kind": "swf",
       "name": "ppets_4995",
@@ -38635,6 +38643,14 @@
       "path": "67d22cba0eb016830e1fcaa27bb59d9e",
       "fileSize": 3037996,
       "variant": "small"
+    },
+    {
+      "id": 13311,
+      "kind": "swf",
+      "name": "ppets_13311",
+      "path": "8583119c66b36026e84287962e7e52ca",
+      "fileSize": 22149569,
+      "mirrored": true
     },
     {
       "id": 14678,
@@ -44422,6 +44438,29 @@
       "name": "ppets_1400887",
       "path": "39727c65e79859c15aeac141588f40d4",
       "fileSize": 18980169,
+      "mirrored": true
+    },
+    {
+      "id": 1400888,
+      "kind": "swf",
+      "name": "ppets_1400888",
+      "path": "ef25222be71689ddf4cff9a2db2a46da",
+      "fileSize": 1734847
+    },
+    {
+      "id": 1400889,
+      "kind": "swf",
+      "name": "ppets_1400889",
+      "path": "a4f18a03b17e7136381843a5d6c27e9c",
+      "fileSize": 17831987,
+      "mirrored": true
+    },
+    {
+      "id": 1400890,
+      "kind": "swf",
+      "name": "ppets_1400890",
+      "path": "25a083c092110cd353f5cb64a1cc3747",
+      "fileSize": 9764389,
       "mirrored": true
     },
     {
