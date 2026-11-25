@@ -78,6 +78,12 @@ export class ResourceDictionary {
     return sprite(this.allocate(), frames);
   }
 
+  defineSprite(frames: Tag[][]): number {
+    const id = this.allocate();
+    this.tags.push(sprite(id, frames));
+    return id;
+  }
+
   private crop(
     first: number,
     second: number,

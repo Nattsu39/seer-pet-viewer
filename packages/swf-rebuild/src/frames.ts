@@ -1,6 +1,12 @@
 import { resolveMaterial } from "./material.js";
 import { ResourceDictionary, type Region } from "./resources.js";
-import { place, placeMask, type Matrix, type Tag } from "./swf.js";
+import {
+  place,
+  placeMask,
+  placeSprite,
+  type Matrix,
+  type Tag,
+} from "./swf.js";
 import type { Frame, Point } from "./types.js";
 
 export function unpackColor(first: number, second: number): number[] {
@@ -43,14 +49,15 @@ export function quadMatrix(
   ];
 }
 
-interface ActiveMask {
+interface MaskScope {
   geometry: string;
-  depth: number;
+  baseDepth: number;
   region: Region;
   transform: Matrix;
+  tags: Tag[];
 }
 
-/** 将已验证的平衡单遮罩区间转换为 Flash 原生遮罩。 */
+/** 将已验证的平衡遮罩区间（含嵌套与重叠交集）转换为 Flash 原生遮罩。 */
 export function framePlacements(
   frame: Frame,
   dictionary: ResourceDictionary,
@@ -67,10 +74,66 @@ export function framePlacements(
   ) {
     throw new Error("Invalid quad attribute lengths");
   }
-  const tags: Tag[] = [];
-  let active: ActiveMask | undefined;
+  const rootTags: Tag[] = [];
+  const stack: MaskScope[] = [];
   let maskCount = 0;
   let expectedVertex = 0;
+
+  const pushToCurrent = (tagForDepth: (depth: number) => Tag): void => {
+    const parent = stack[stack.length - 1];
+    const target = parent ? parent.tags : rootTags;
+    const depth = parent
+      ? parent.baseDepth + 1 + parent.tags.length
+      : rootTags.length + 1;
+    if (depth > 65535) throw new Error("SWF display list depth exhausted");
+    target.push(tagForDepth(depth));
+  };
+
+  const openScope = (
+    geometry: string,
+    region: Region,
+    transform: Matrix,
+  ): void => {
+    if (stack.length >= 255)
+      throw new Error("Stencil nesting depth exceeds 255");
+    const baseDepth = stack.length === 0 ? rootTags.length + 1 : 1;
+    if (baseDepth > 65534) throw new Error("SWF display list depth exhausted");
+    stack.push({ geometry, baseDepth, region, transform, tags: [] });
+  };
+
+  const closeTopScope = (): void => {
+    const scope = stack.pop()!;
+    // 平衡的遮罩写入之间可能没有绘制内容。
+    // 这种区间不可见，不应裁切后续对象。
+    if (scope.tags.length === 0) return;
+    if (stack.length === 0) {
+      rootTags.push(
+        placeMask(
+          scope.region.id,
+          scope.baseDepth,
+          scope.baseDepth + scope.tags.length,
+          scope.transform,
+        ),
+        ...scope.tags,
+      );
+    } else {
+      // Flash 同层时间轴不支持嵌套 ClipDepth，内层遮罩封装为单帧 DefineSprite。
+      const spriteId = dictionary.defineSprite([
+        [
+          placeMask(
+            scope.region.id,
+            1,
+            1 + scope.tags.length,
+            scope.transform,
+          ),
+          ...scope.tags,
+        ],
+      ]);
+      pushToCurrent((depth) => placeSprite(spriteId, depth));
+    }
+    maskCount++;
+  };
+
   for (const subMesh of frame.subMeshes) {
     const count = subMesh.indexCount / 6;
     if (
@@ -89,12 +152,7 @@ export function framePlacements(
       if (material.kind !== "draw") {
         const geometry = JSON.stringify([pair, vertices]);
         if (material.kind === "increment") {
-          if (active)
-            throw new Error(
-              "Nested or overlapping stencil writes are not supported",
-            );
           const region = dictionary.mask(...pair);
-          const depth = tags.length + 1;
           const transform = quadMatrix(
             vertices,
             region.width,
@@ -102,34 +160,43 @@ export function framePlacements(
             ppu,
             origin,
           );
-          active = { geometry, depth, region, transform };
-          // 闭合写入后才能确定此区间的最终上界。
-          tags.push(placeMask(region.id, depth, depth + 1, transform));
-          maskCount++;
+          openScope(geometry, region, transform);
         } else {
-          if (!active || active.geometry !== geometry)
-            throw new Error("Unmatched stencil decrement");
-          if (tags.length === active.depth) {
-            // 平衡的遮罩写入之间可能没有绘制内容。
-            // 这种区间不可见，不应裁切后续对象。
-            tags.pop();
-            maskCount--;
-          } else {
-            tags[active.depth - 1] = placeMask(
-              active.region.id,
-              active.depth,
-              tags.length,
-              active.transform,
-            );
+          let matchIndex = -1;
+          for (let i = stack.length - 1; i >= 0; i--) {
+            if (stack[i].geometry === geometry) {
+              matchIndex = i;
+              break;
+            }
           }
-          active = undefined;
+          if (matchIndex < 0) throw new Error("Unmatched stencil decrement");
+          const reopen: Pick<MaskScope, "geometry" | "region" | "transform">[] =
+            [];
+          while (stack.length - 1 > matchIndex) {
+            const top = stack[stack.length - 1];
+            reopen.push({
+              geometry: top.geometry,
+              region: top.region,
+              transform: top.transform,
+            });
+            closeTopScope();
+          }
+          closeTopScope();
+          for (let i = reopen.length - 1; i >= 0; i--) {
+            const entry = reopen[i];
+            openScope(entry.geometry, entry.region, entry.transform);
+          }
         }
         continue;
       }
-      if (material.stencil !== null && !active)
+      if (material.stencil !== null && stack.length === 0)
         throw new Error("Masked draw without an active stencil");
-      if (material.stencil === null && active)
+      if (material.stencil === null && stack.length > 0)
         throw new Error("Unmasked draw inside a stencil interval");
+      if (material.stencil !== null && material.stencil !== stack.length)
+        throw new Error(
+          `Stencil reference ${material.stencil} does not match active stencil depth ${stack.length}`,
+        );
       const region = dictionary.region(...pair);
       const add = unpackColor(
         frame.addColors[packed],
@@ -140,21 +207,21 @@ export function framePlacements(
         frame.mulColors[packed + 1],
       );
       if (add[3] !== 0) throw new Error("Additive alpha is not supported");
-      tags.push(
-        place(
-          region.id,
-          tags.length + 1,
-          quadMatrix(vertices, region.width, region.height, ppu, origin),
-          mul,
-          add,
-          material.blend,
-        ),
+      const transform = quadMatrix(
+        vertices,
+        region.width,
+        region.height,
+        ppu,
+        origin,
+      );
+      pushToCurrent((depth) =>
+        place(region.id, depth, transform, mul, add, material.blend),
       );
     }
     expectedVertex += count * 4;
   }
   if (expectedVertex !== frame.vertices.length)
     throw new Error("Unreferenced quad vertices");
-  if (active) throw new Error("Unclosed stencil interval");
-  return { tags, maskCount };
+  if (stack.length > 0) throw new Error("Unclosed stencil interval");
+  return { tags: rootTags, maskCount };
 }

@@ -23,7 +23,8 @@ export function resolveMaterial(material: Material): MaterialState {
   if (
     (masked &&
       (!Number.isInteger(stencil) ||
-        stencil !== 1 ||
+        stencil! < 1 ||
+        stencil! > 255 ||
         floats._StencilID !== stencil)) ||
     (!masked && (match[3] !== undefined || (floats._StencilID ?? 0) !== 0))
   )

@@ -324,6 +324,16 @@ export function maskShape(
   };
 }
 
+export function placeSprite(id: number, depth: number): Tag {
+  if (!Number.isInteger(depth) || depth < 1 || depth > 65535) {
+    throw new Error("Invalid sprite placement depth");
+  }
+  return {
+    code: 26,
+    data: Buffer.concat([Buffer.from([0x02]), u16(depth), u16(id)]),
+  };
+}
+
 export function placeMask(
   id: number,
   depth: number,

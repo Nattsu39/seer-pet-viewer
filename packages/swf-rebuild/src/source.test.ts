@@ -400,6 +400,85 @@ describe("structural source discovery", () => {
     );
   });
 
+  it("rebuilds nested stencil masks into both the main SWF and action previews in definition order", () => {
+    const { file, clip } = fixture();
+    const quad = (dx: number) => [
+      { x: dx, y: 0 },
+      { x: dx + 1, y: 0 },
+      { x: dx + 1, y: -1 },
+      { x: dx, y: -1 },
+    ];
+    const nestedMaterials = [
+      { name: "SwfIncrMaskShader", floats: { _ExternalAlpha: 0 } },
+      {
+        name: "SwfMaskedShader_Normal_1",
+        floats: {
+          _ExternalAlpha: 0,
+          _BlendOp: 0,
+          _SrcBlend: 1,
+          _DstBlend: 10,
+          _StencilID: 1,
+        },
+      },
+      { name: "SwfIncrMaskShader", floats: { _ExternalAlpha: 0 } },
+      {
+        name: "SwfMaskedShader_Normal_2",
+        floats: {
+          _ExternalAlpha: 0,
+          _BlendOp: 0,
+          _SrcBlend: 1,
+          _DstBlend: 10,
+          _StencilID: 2,
+        },
+      },
+      { name: "SwfDecrMaskShader", floats: { _ExternalAlpha: 0 } },
+      { name: "SwfDecrMaskShader", floats: { _ExternalAlpha: 0 } },
+    ];
+    clip.sequences[1].frames[1] = {
+      labels: [],
+      vertices: [
+        ...quad(0),
+        ...quad(0),
+        ...quad(0.25),
+        ...quad(0),
+        ...quad(0.25),
+        ...quad(0),
+      ],
+      uvs: nestedMaterials.flatMap(() => [0, 0xffffffff]),
+      addColors: nestedMaterials.flatMap(() => [0, 0]),
+      mulColors: nestedMaterials.flatMap(() => [0x02000200, 0x02000200]),
+      subMeshes: nestedMaterials.map((material, index) => ({
+        startVertex: index * 4,
+        indexCount: 6,
+        material,
+      })),
+    };
+
+    const result = rebuildPet(writeSwf(file), clip);
+    expect(result.report.maskPlacements).toBe(2);
+    expect(result.report.actions[1].maskFrames).toBe(1);
+
+    for (const bytes of [result.swf, result.previews.get("special")!]) {
+      const parsed = readSwf(bytes);
+      const defined = new Set<number>();
+      for (const tag of parsed.tags) {
+        if (tag.code === 39) {
+          for (const sub of readTags(tag.data.subarray(4))) {
+            if (sub.code === 26 && sub.data[0] & 0x02) {
+              expect(defined.has(sub.data.readUInt16LE(3))).toBe(true);
+            }
+            if (sub.code === 70 && sub.data[0] & 0x02) {
+              expect(defined.has(sub.data.readUInt16LE(4))).toBe(true);
+            }
+          }
+          defined.add(tag.data.readUInt16LE(0));
+        } else if ([32, 36].includes(tag.code)) {
+          defined.add(tag.data.readUInt16LE(0));
+        }
+      }
+    }
+  });
+
   it("rejects animated idle sprites and ambiguous multi-object wrappers", () => {
     const { file, clip } = fixture();
     file.tags[0] = sprite(12, [[], []]);
